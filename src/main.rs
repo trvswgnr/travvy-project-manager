@@ -182,8 +182,8 @@ fn show_home_interface(prompt: &str) {
         .items(&[
             "Open project",
             "Add project",
-            "Delete projects",
             "Edit project",
+            "Delete projects",
             "Quit (Esc)",
         ])
         .default(0)
@@ -197,18 +197,10 @@ fn show_home_interface(prompt: &str) {
     let selection = selection.unwrap();
 
     match selection {
-        0 => {
-            show_select_projects_interface(Action::Open, None);
-        }
-        1 => {
-            show_select_projects_interface(Action::Edit, None);
-        }
-        2 => {
-            show_select_projects_interface(Action::Delete, None);
-        }
-        3 => {
-            show_add_project_interface();
-        }
+        0 => show_select_projects_interface(Action::Open, Some("Select a project to open")),
+        1 => show_add_project_interface(),
+        2 => show_select_projects_interface(Action::Edit, Some("Select a project to edit")),
+        3 => show_select_projects_interface(Action::Delete, Some("Select projects to delete")),
         4 => quit(),
         _ => {}
     }
@@ -326,7 +318,7 @@ fn add_project(name: &str, path: &str) {
         last_opened: Duration::from_secs(0),
     };
     project.set_last_opened();
-    if project_already_exists(&project) {
+    if project_already_exists(&project.name) {
         return show_overwrite_project_interface(&project);
     }
     projects.push(project.clone());
@@ -339,7 +331,7 @@ fn show_overwrite_project_interface(project: &Project) {
             "Project {} already exists. Overwrite?",
             project.name
         ))
-        .items(&["Yes", "No"])
+        .items(&["Yes", "No", "Back", "Quit"])
         .default(0)
         .interact()
         .unwrap_or(1);
@@ -360,13 +352,15 @@ fn show_overwrite_project_interface(project: &Project) {
             }
             show_home_interface("What would you like to do?");
         }
-        _ => show_add_project_interface(),
+        1 => show_add_project_interface(),
+        2 => show_home_interface("What would you like to do?"),
+        _ => quit(),
     }
 }
 
-fn project_already_exists(project: &Project) -> bool {
+fn project_already_exists(name: &str) -> bool {
     let projects = load_projects();
-    projects.iter().any(|p| p == project)
+    projects.iter().any(|p| p.name == name)
 }
 
 fn show_select_projects_interface(action: Action, prompt: Option<&str>) {
@@ -386,13 +380,13 @@ fn show_select_projects_interface(action: Action, prompt: Option<&str>) {
     let dialogue = match action {
         Action::Delete => Dialogue::MultiSelect(
             MultiSelect::with_theme(&theme)
-                .with_prompt(prompt.unwrap_or("Select project"))
+                .with_prompt(prompt.unwrap_or("Select a project"))
                 .items(&project_names)
                 .max_length(5),
         ),
         _ => Dialogue::Select(
             Select::with_theme(&theme)
-                .with_prompt(prompt.unwrap_or("Select project"))
+                .with_prompt(prompt.unwrap_or("Select a project"))
                 .items(&project_names)
                 .max_length(5),
         ),
@@ -539,7 +533,7 @@ fn change_directory(new_dir: &str) -> io::Result<()> {
 }
 
 fn open_in_editor(path: &str) -> io::Result<()> {
-    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vim".to_string());
     Command::new(editor).arg(path).status()?;
     Ok(())
 }
