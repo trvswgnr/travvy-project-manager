@@ -312,6 +312,14 @@ fn save_projects(projects: &[Project]) {
 
 fn add_project(name: &str, path: &str) {
     let mut projects = load_projects();
+    let default_path = std::env::current_dir().unwrap();
+    let default_name = default_path.file_name().unwrap().to_str().unwrap();
+    let name = if name.is_empty() { default_name } else { name };
+    let path = if path.is_empty() {
+        default_path.to_str().unwrap()
+    } else {
+        path
+    };
     let mut project = Project {
         name: name.to_string(),
         path: path.to_string(),
