@@ -372,6 +372,7 @@ dependencies = [
  "clap",
  "dialoguer",
  "dirs",
+ "lazy_static",
  "serde",
  "serde_json",
  "toml",

@@ -1,4 +1,6 @@
 use clap::{App, Arg, SubCommand};
+use dialoguer::{theme::ColorfulTheme, Confirm, Input, MultiSelect, Select};
+use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs::File;
@@ -7,7 +9,9 @@ use std::process::Command;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
-use dialoguer::{theme::ColorfulTheme, Confirm, Input, MultiSelect, Select};
+lazy_static! {
+    static ref PROJECTS: Mutex<Vec<Project>> = Mutex::new(load_projects_from_disk());
+}
 
 // a global counter for home many times we've visited the home interface
 static mut HOME_INTERFACE_VISITS: Mutex<usize> = Mutex::new(0);
@@ -177,14 +181,20 @@ fn show_home_interface(prompt: &str) {
         .with_prompt(prompt)
         .items(&[
             "Open project",
-            "Edit project",
-            "Delete project",
             "Add project",
-            "Quit",
+            "Delete projects",
+            "Edit project",
+            "Quit (Esc)",
         ])
         .default(0)
-        .interact()
-        .unwrap_or(4);
+        .interact_opt()
+        .unwrap_or(None);
+
+    if selection.is_none() {
+        return quit();
+    }
+
+    let selection = selection.unwrap();
 
     match selection {
         0 => {
@@ -244,13 +254,17 @@ fn show_add_project_interface() {
     let name = Input::<String>::new()
         .with_prompt("Project name")
         .default(default_name)
-        .interact()
-        .unwrap();
+        .interact_text()
+        .unwrap_or_default();
     let path = Input::<String>::new()
         .with_prompt("Project path")
         .default(default_path)
-        .interact()
-        .unwrap();
+        .interact_text()
+        .unwrap_or_default();
+    if name.is_empty() || path.is_empty() {
+        println!("Name and path cannot be empty");
+        return show_add_project_interface();
+    }
     add_project(name.as_str(), path.as_str());
 }
 
@@ -282,24 +296,24 @@ impl std::fmt::Display for Project {
     }
 }
 
-fn load_projects() -> Vec<Project> {
-    let mut file = read_projects_file();
+fn load_projects_from_disk() -> Vec<Project> {
+    let mut file = open_projects_file(true, false, false);
     let mut json = String::new();
     file.read_to_string(&mut json).unwrap();
-    let projects_set: HashSet<Project> = serde_json::from_str(&json).unwrap_or_else(|_| {
-        panic!(
-            "Error: Failed to parse projects file. Please check {:?}",
-            file
-        )
-    });
+    let projects_set: HashSet<Project> = serde_json::from_str(&json).unwrap_or_default();
     let mut projects: Vec<Project> = projects_set.into_iter().collect();
     // sort by last opened (most recent first)
     projects.sort_by(|a, b| b.last_opened.cmp(&a.last_opened));
     projects
 }
 
+fn load_projects() -> Vec<Project> {
+    let projects = PROJECTS.lock().unwrap();
+    projects.to_vec()
+}
+
 fn save_projects(projects: &[Project]) {
-    let mut file = read_projects_file();
+    let mut file = File::create(get_config_dir().join("projects.json")).unwrap();
     let json = serde_json::to_string_pretty(&projects).unwrap();
     file.write_all(json.as_bytes()).unwrap();
 }
@@ -356,21 +370,11 @@ fn project_already_exists(project: &Project) -> bool {
 }
 
 fn show_select_projects_interface(action: Action, prompt: Option<&str>) {
-    let mut projects = load_projects();
+    let projects = load_projects();
+
     if projects.is_empty() {
         return select_no_projects_found();
     }
-
-    projects.sort_by(|a, b| {
-        if a.last_opened == b.last_opened {
-            a.name.cmp(&b.name)
-        } else {
-            match a.last_opened > b.last_opened {
-                true => std::cmp::Ordering::Less,
-                false => std::cmp::Ordering::Greater,
-            }
-        }
-    });
 
     let project_names = projects
         .iter()
@@ -378,23 +382,37 @@ fn show_select_projects_interface(action: Action, prompt: Option<&str>) {
         .collect::<Vec<_>>();
 
     let theme = ColorfulTheme::default();
+
     let dialogue = match action {
         Action::Delete => Dialogue::MultiSelect(
             MultiSelect::with_theme(&theme)
                 .with_prompt(prompt.unwrap_or("Select project"))
-                .items(&project_names),
+                .items(&project_names)
+                .max_length(5),
         ),
         _ => Dialogue::Select(
             Select::with_theme(&theme)
                 .with_prompt(prompt.unwrap_or("Select project"))
-                .items(&project_names),
+                .items(&project_names)
+                .max_length(5),
         ),
     };
 
     let selections = match dialogue {
-        Dialogue::Select(select) => vec![select.default(0).interact().unwrap_or_default()],
-        Dialogue::MultiSelect(multi_select) => multi_select.interact().unwrap_or_default(),
+        Dialogue::Select(select) => select
+            .default(0)
+            .interact_opt()
+            .unwrap_or_default()
+            .map(|selection| vec![selection]),
+        Dialogue::MultiSelect(multi_select) => multi_select.interact_opt().unwrap_or_default(),
     };
+
+    if selections.is_none() || selections.as_ref().unwrap().is_empty() {
+        show_home_interface("What would you like to do?");
+        return;
+    }
+
+    let selections = selections.unwrap();
 
     if selections.is_empty() {
         println!("No project selected");
@@ -410,10 +428,16 @@ fn show_select_projects_interface(action: Action, prompt: Option<&str>) {
         Action::Open => {
             let selection = Select::with_theme(&ColorfulTheme::default())
                 .with_prompt("Open project in")
-                .items(&["Terminal", "Editor", "Go back"])
+                .items(&["Terminal", "Editor", "Back", "Quit"])
                 .default(0)
-                .interact()
+                .interact_opt()
                 .unwrap_or_else(|e| panic!("Error: {}", e));
+
+            if selection.is_none() {
+                return show_select_projects_interface(Action::Open, None);
+            }
+
+            let selection = selection.unwrap();
             match selection {
                 0 => {
                     let project = &selected_projects[0];
@@ -425,8 +449,9 @@ fn show_select_projects_interface(action: Action, prompt: Option<&str>) {
                     }
                 }
                 2 => {
-                    show_home_interface("What would you like to do?");
+                    show_select_projects_interface(Action::Open, None);
                 }
+                3 => quit(),
                 _ => {}
             }
         }
@@ -456,12 +481,12 @@ fn edit_project(name: &str) {
         let new_name = Input::<String>::new()
             .with_prompt("Project name")
             .default(project.name.clone())
-            .interact()
-            .unwrap();
+            .interact_text()
+            .unwrap_or_default();
         let new_path = Input::<String>::new()
             .with_prompt("Project path")
             .default(project.path.clone())
-            .interact()
+            .interact_text()
             .unwrap();
         project.name = new_name;
         project.path = new_path;
@@ -478,13 +503,14 @@ enum OpenAction {
 }
 
 fn open_project(name: &str, open_action: OpenAction) {
-    let projects = load_projects();
-    if let Some(project) = projects
+    let mut projects = load_projects();
+    if let Some((i, project)) = projects
         .clone()
         .iter_mut()
-        .find(|project| project.name == name)
+        .enumerate()
+        .find(|(_, project)| project.name == name)
     {
-        project.set_last_opened();
+        projects[i].set_last_opened();
         save_projects(&projects);
         match open_action {
             OpenAction::OpenInTerminal => {
@@ -536,13 +562,17 @@ fn get_config_dir() -> std::path::PathBuf {
     config_dir
 }
 
-fn read_projects_file() -> File {
+fn open_projects_file(read: bool, write: bool, create: bool) -> File {
     let config_dir = get_config_dir();
     let projects_file = config_dir.join("projects.json");
+    // if the file doesn't exist, create it
+    if !projects_file.exists() {
+        File::create(&projects_file).unwrap();
+    }
     std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
+        .read(read)
+        .write(write)
+        .create(create)
         .open(projects_file)
         .unwrap()
 }
