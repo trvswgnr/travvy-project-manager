@@ -2,6 +2,8 @@
 
 `tpm` is a simple command-line project manager that I made to help me organize and manage my projects efficiently. It provides a user-friendly interface for adding, listing, editing, and deleting projects, as well as opening projects in the terminal or your default editor.
 
+![tpm-demo](https://github.com/trvswgnr/travvy-project-manager/assets/8974888/119cc19f-4b4f-4d08-9bc0-fba8cc463707)
+
 ## Features
 
 - Interactive mode: By default, `tpm` starts in interactive mode, which allows you to perform actions on your projects using a simple command-line interface.
