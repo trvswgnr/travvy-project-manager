@@ -6,6 +6,9 @@ on:
       version:
         description: 'Version for the release'
         required: true
+      description:
+        description: 'Description for the release'
+        required: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -58,11 +61,13 @@ jobs:
 
     - name: Create GitHub Release
       id: create_release
-      uses: gh-actions/create-release@v1
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ github.event.inputs.version }}
         release_name: Release ${{ github.event.inputs.version }}
-        body: "Description of the release"
+        body: ${{ github.event.inputs.description }}
         draft: false
         prerelease: false
 
