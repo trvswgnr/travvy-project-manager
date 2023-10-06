@@ -74,20 +74,11 @@ jobs:
 
     - name: Create GitHub Release
       id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: ncipollo/release-action@v1
       with:
-        tag_name: ${{ github.event.inputs.version }}
-        release_name: Release ${{ github.event.inputs.version }}
+        name: Release ${{ github.event.inputs.version }}
+        tag: ${{ github.event.inputs.version }}
         body: ${{ github.event.inputs.description }}
         draft: false
         prerelease: false
-
-    - name: Upload Release Assets
-      uses: actions/upload-release-asset@v1
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./artifacts/tpm-${{ matrix.os }}.tar.gz
-        asset_name: tpm-${{ matrix.os }}.tar.gz
-        asset_content_type: application/gzip
+        artifacts: "artifacts/tpm-*"
