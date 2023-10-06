@@ -1,6 +1,6 @@
 # Travvy's Project Manager (TPM)
 
-TPM is a simple command-line project manager designed to help you organize and manage your projects efficiently. It provides a user-friendly interface for adding, listing, editing, and deleting projects, as well as opening projects in the terminal or default editor.
+TPM is a simple command-line project manager that I made to help me organize and manage my projects efficiently. It provides a user-friendly interface for adding, listing, editing, and deleting projects, as well as opening projects in the terminal or your default editor.
 
 ## Features
 
@@ -20,24 +20,12 @@ TPM is a simple command-line project manager designed to help you organize and m
 
 To install TPM, follow these steps:
 
-1. Make sure you have [CrabLang](https://crablang.org) installed on your system. If not, you can install it from the [official CrabLang repo](https://github.com/crablang/crablang).
+1. Make sure you have [CrabLang](https://crablang.org) (or R\*st) installed on your system. If not, you can install it from the [official CrabLang repo](https://github.com/crablang/crablang).
 
-2. Clone the TPM repository to your local machine:
-
-   ```shell
-   git clone https://github.com/trvswgnr/travvy-project-manager.git
-   ```
-
-3. Navigate to the project directory:
+2. Install the TPM executable:
 
    ```shell
-   cd travvy-project-manager
-   ```
-
-4. Build the TPM executable:
-
-   ```shell
-   cargo install --path .
+   crabgo install --git https://github.com/trvswgnr/travvy-project-manager.git
    ```
 
 ## Usage
