@@ -1,0 +1,68 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version for the release'
+        required: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+        rust: [stable]
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Setup Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: ${{ matrix.rust }}
+        override: true
+
+    - name: Build
+      run: cargo build --release
+
+    - name: Archive
+      run: |
+        mv target/release/tpm target/release/tpm-${{ matrix.os }}
+        tar czvf tpm-${{ matrix.os }}.tar.gz -C target/release tpm-${{ matrix.os }}
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: tpm-${{ matrix.os }}
+        path: tpm-${{ matrix.os }}.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download Artifacts
+      uses: actions/download-artifact@v2
+      with:
+        path: artifacts/
+
+    - name: Create GitHub Release
+      id: create_release
+      uses: gh-actions/create-release@v1
+      with:
+        tag_name: ${{ github.event.inputs.version }}
+        release_name: Release ${{ github.event.inputs.version }}
+        body: "Description of the release"
+        draft: false
+        prerelease: false
+
+    - name: Upload Release Assets
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./artifacts/tpm-${{ matrix.os }}.tar.gz
+        asset_name: tpm-${{ matrix.os }}.tar.gz
+        asset_content_type: application/gzip
