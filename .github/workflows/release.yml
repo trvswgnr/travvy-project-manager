@@ -30,6 +30,7 @@ jobs:
       run: cargo build --release
 
     - name: Archive
+      shell: bash
       run: |
         if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
           mv target/release/tpm.exe target/release/tpm-${{ matrix.os }}.exe
