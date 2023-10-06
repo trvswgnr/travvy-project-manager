@@ -126,7 +126,10 @@ fn main() {
             .about("Delete a project")
             .arg(Arg::with_name("name").short("n").takes_value(true)),
     )
-    .subcommand(SubCommand::with_name("edit").about("Edit a project"))
+    .subcommand(
+        SubCommand::with_name("edit").about("Edit a project")
+            .arg(Arg::with_name("name").short("n").takes_value(true)),
+    )
     .subcommand(
         SubCommand::with_name("open")
             .about("Open a project")
