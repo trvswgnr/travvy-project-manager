@@ -461,9 +461,12 @@ fn show_select_projects_interface(action: Action, prompt: Option<&str>) {
             }
         }
         Action::Delete => {
-            for project in selected_projects {
-                delete_project(&project.name);
-            }
+            delete_projects(
+                &selected_projects
+                    .iter()
+                    .map(|project| project.name.as_str())
+                    .collect::<Vec<_>>(),
+            );
         }
         Action::Edit => {
             for project in selected_projects {
@@ -476,6 +479,12 @@ fn show_select_projects_interface(action: Action, prompt: Option<&str>) {
 fn delete_project(name: &str) {
     let mut projects = load_projects();
     projects.retain(|project| project.name != name);
+    save_projects(&projects);
+}
+
+fn delete_projects(names: &[&str]) {
+    let mut projects = load_projects();
+    projects.retain(|project| !names.contains(&project.name.as_str()));
     save_projects(&projects);
 }
 
