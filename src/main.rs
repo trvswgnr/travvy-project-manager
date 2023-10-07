@@ -115,51 +115,115 @@ fn main() {
     .long_version(VERSION)
     .about(about.as_str())
     .subcommand(
+        /*
+        tpm add "My Project" /path/to/project
+        tpm add "My Project"
+        tpm add
+        */
         SubCommand::with_name("add")
             .about("Add a new project")
-            .arg(Arg::with_name("name").short("n").takes_value(true))
-            .arg(Arg::with_name("path").short("p").takes_value(true)),
+            .arg(Arg::from_usage("<project_name> 'Project name'").required(false))
+            .arg(Arg::from_usage("<project_path> 'Project path'").required(false))
+            .arg(
+                Arg::with_name("name")
+                    .short("n")
+                    .takes_value(true)
+                    .required(false),
+            )
+            .arg(
+                Arg::with_name("path")
+                    .short("p")
+                    .takes_value(true)
+                    .required(false),
+            ),
     )
     .subcommand(SubCommand::with_name("list").about("List all projects"))
     .subcommand(
         SubCommand::with_name("delete")
             .about("Delete a project")
-            .arg(Arg::with_name("name").short("n").takes_value(true)),
+            .arg(Arg::from_usage("<project_name> 'Project name'").required(false))
+            .arg(
+                Arg::with_name("name")
+                    .short("n")
+                    .takes_value(true)
+                    .required(false),
+            ),
     )
     .subcommand(
-        SubCommand::with_name("edit").about("Edit a project")
-            .arg(Arg::with_name("name").short("n").takes_value(true)),
+        SubCommand::with_name("edit")
+            .about("Edit a project")
+            .arg(Arg::from_usage("<project_name> 'Project name'").required(false))
+            .arg(
+                Arg::with_name("name")
+                    .short("n")
+                    .takes_value(true)
+                    .required(false),
+            ),
     )
     .subcommand(
         SubCommand::with_name("open")
             .about("Open a project")
-            .arg(Arg::with_name("name").takes_value(true)),
+            .arg(Arg::from_usage("<project_name> 'Project name'").required(false))
+            .arg(
+                Arg::with_name("name")
+                    .short("n")
+                    .takes_value(true)
+                    .required(false),
+            ),
     )
     .get_matches();
 
     match matches.subcommand() {
         ("add", Some(add_matches)) => {
-            let name = add_matches.value_of("name").unwrap_or("");
-            let path = add_matches.value_of("path").unwrap_or("");
+            let name = add_matches
+                .value_of("name")
+                .unwrap_or(add_matches.value_of("project_name").unwrap_or(""));
+            let path = add_matches
+                .value_of("path")
+                .unwrap_or(add_matches.value_of("project_path").unwrap_or(""));
+            if name.is_empty() || path.is_empty() {
+                return show_add_project_interface();
+            }
             add_project(name, path);
         }
         ("list", Some(_)) => {
-            show_select_projects_interface(Action::Open, None);
+            let projects = load_projects();
+            if projects.is_empty() {
+                return select_no_projects_found();
+            }
+            for project in projects {
+                println!("{}", project);
+            }
         }
         ("delete", Some(delete_matches)) => {
-            let name = delete_matches.value_of("name").unwrap_or("");
+            let name = delete_matches
+                .value_of("name")
+                .unwrap_or(delete_matches.value_of("project_name").unwrap_or(""));
             if name.is_empty() {
-                show_select_projects_interface(Action::Delete, None);
+                show_select_projects_interface(Action::Delete, Some("Select projects to delete"));
                 return;
             }
             delete_project(name);
         }
         ("edit", Some(edit_matches)) => {
-            let name = edit_matches.value_of("name").unwrap_or("");
+            let name = edit_matches
+                .value_of("name")
+                .unwrap_or(edit_matches.value_of("project_name").unwrap_or(""));
+
+            if name.is_empty() {
+                show_select_projects_interface(Action::Edit, Some("Select a project to edit"));
+                return;
+            }
             edit_project(name);
         }
         ("open", Some(open_matches)) => {
-            let name = open_matches.value_of("name").unwrap_or("");
+            let name = open_matches
+                .value_of("name")
+                .unwrap_or(open_matches.value_of("project_name").unwrap_or(""));
+            if name.is_empty() {
+                show_select_projects_interface(Action::Open, Some("Select a project to open"));
+                return;
+            }
             open_project(name, OpenAction::OpenInTerminal);
         }
         _ => show_home_interface("What would you like to do?"),
