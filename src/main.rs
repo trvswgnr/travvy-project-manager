@@ -1,12 +1,12 @@
 use clap::{App, Arg, SubCommand};
-use dialoguer::{theme::ColorfulTheme, Confirm, Input, MultiSelect, Select, console};
+use dialoguer::{console, theme::ColorfulTheme, Confirm, Input, MultiSelect, Select};
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
-use std::process::{Command, Output};
+use std::process::Command;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
@@ -172,6 +172,17 @@ fn main() {
                     .required(false),
             ),
     )
+    .subcommand(
+        SubCommand::with_name("new")
+            .about("Create a new project")
+            .arg(Arg::from_usage("<project_name> 'Project name'").required(false))
+            .arg(
+                Arg::with_name("name")
+                    .short("n")
+                    .takes_value(true)
+                    .required(false),
+            ),
+    )
     .get_matches();
 
     match matches.subcommand() {
@@ -233,8 +244,58 @@ fn main() {
             }
             open_project(name, OpenAction::OpenInTerminal);
         }
+        ("new", Some(new_matches)) => {
+            let name = new_matches
+                .value_of("name")
+                .unwrap_or(new_matches.value_of("project_name").unwrap_or(""));
+            if name.is_empty() {
+                return show_new_project_interface();
+            }
+            new_project(name);
+        }
         _ => show_home_interface("What would you like to do?"),
     }
+}
+
+fn show_new_project_interface() {
+    let name = Input::<String>::new()
+        .with_prompt("Project name")
+        .interact_text()
+        .unwrap_or_default();
+    if name.is_empty() {
+        println!("Name cannot be empty");
+        return show_new_project_interface();
+    }
+    new_project(name.as_str());
+}
+
+fn new_project(name: &str) {
+    if name.is_empty() {
+        println!("Name cannot be empty");
+        return show_new_project_interface();
+    }
+    let mut projects = load_projects();
+    let path_base = get_config_dir().join("projects");
+    if !path_base.exists() {
+        std::fs::create_dir(&path_base).unwrap();
+    }
+    let path = path_base.join(name);
+    if path.exists() {
+        println!("Project already exists");
+        return;
+    }
+    std::fs::create_dir(&path).unwrap();
+    let mut project = Project {
+        name: name.to_string(),
+        path: path.to_str().unwrap().to_string(),
+        last_opened: Duration::from_secs(0),
+    };
+    project.set_last_opened();
+    if project_already_exists(&project.name) {
+        return show_overwrite_project_interface(&project);
+    }
+    projects.push(project.clone());
+    save_projects(&projects);
 }
 
 fn show_home_interface(prompt: &str) {
