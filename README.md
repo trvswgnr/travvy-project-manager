@@ -49,7 +49,13 @@ You can also pass in subcommands and arguments directly. Here are some examples 
 - Add a new project:
 
   ```shell
+  tpm add # will prompt for name and path
+  # or
+  tpm add "My Project" "/path/to/my/project"
+  # or
   tpm add -n "My Project" -p "/path/to/my/project"
+  # or
+  tpm add "My Project" # path will default to the current working directory
   ```
 
   **Note:** If you do not provide a path, `tpm` will default to the path of the current working directory. If you do not provide a name, `tpm` will use the name of the directory.

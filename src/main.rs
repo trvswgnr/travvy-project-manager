@@ -1,11 +1,12 @@
 use clap::{App, Arg, SubCommand};
-use dialoguer::{theme::ColorfulTheme, Confirm, Input, MultiSelect, Select};
+use dialoguer::{theme::ColorfulTheme, Confirm, Input, MultiSelect, Select, console};
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::{self, Read, Write};
-use std::process::Command;
+use std::path::PathBuf;
+use std::process::{Command, Output};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
@@ -181,7 +182,7 @@ fn main() {
             let path = add_matches
                 .value_of("path")
                 .unwrap_or(add_matches.value_of("project_path").unwrap_or(""));
-            if name.is_empty() || path.is_empty() {
+            if name.is_empty() && path.is_empty() {
                 return show_add_project_interface();
             }
             add_project(name, path);
@@ -191,9 +192,15 @@ fn main() {
             if projects.is_empty() {
                 return select_no_projects_found();
             }
-            for project in projects {
-                println!("{}", project);
-            }
+            // term height without using crates
+            let term_height = console::Term::stdout().size().0;
+            Select::with_theme(&ColorfulTheme::default())
+                .with_prompt("Your projects")
+                .items(&projects)
+                .default(0)
+                .max_length(term_height as usize - 1)
+                .interact_opt()
+                .unwrap_or(None);
         }
         ("delete", Some(delete_matches)) => {
             let name = delete_matches
@@ -383,13 +390,13 @@ fn add_project(name: &str, path: &str) {
     let default_name = default_path.file_name().unwrap().to_str().unwrap();
     let name = if name.is_empty() { default_name } else { name };
     let path = if path.is_empty() {
-        default_path.to_str().unwrap()
+        PathBuf::from(default_path.to_str().unwrap())
     } else {
-        path
+        PathBuf::from(path).canonicalize().unwrap()
     };
     let mut project = Project {
         name: name.to_string(),
-        path: path.to_string(),
+        path: path.to_str().unwrap().to_string(),
         last_opened: Duration::from_secs(0),
     };
     project.set_last_opened();
