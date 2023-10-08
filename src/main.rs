@@ -3,6 +3,7 @@ use dialoguer::{console, theme::ColorfulTheme, Confirm, Input, MultiSelect, Sele
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::env;
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
@@ -251,7 +252,7 @@ fn main() {
             if name.is_empty() {
                 return show_new_project_interface();
             }
-            new_project(name);
+            new_project(name, "");
         }
         _ => show_home_interface("What would you like to do?"),
     }
@@ -262,27 +263,76 @@ fn show_new_project_interface() {
         .with_prompt("Project name")
         .interact_text()
         .unwrap_or_default();
-    if name.is_empty() {
+
+    if name.trim().is_empty() {
         println!("Name cannot be empty");
         return show_new_project_interface();
     }
-    new_project(name.as_str());
+
+    if project_already_exists(name.trim()) {
+        println!("A project with that name already exists");
+        return show_new_project_interface();
+    }
+
+    let home_dir = PathBuf::from(env::var("HOME").unwrap_or("/".to_string()));
+    let project_folder = home_dir.join("projects");
+    let name_normalized = name
+        .trim()
+        .replace(' ', "-")
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect::<String>();
+    let default_path_string = project_folder
+        .join(name_normalized)
+        .to_str()
+        .unwrap()
+        .to_string();
+    let path = Input::<String>::new()
+        .with_prompt("Project path")
+        .default(default_path_string)
+        .interact_text()
+        .unwrap_or_default();
+
+    if path.trim().is_empty() {
+        println!("Path cannot be empty");
+        return show_new_project_interface();
+    }
+
+    if project_already_exists(path.trim()) {
+        println!("A project with that path already exists");
+        return show_new_project_interface();
+    }
+
+    new_project(name.trim(), path.trim());
 }
 
-fn new_project(name: &str) {
+fn new_project(name: &str, path: &str) {
     if name.is_empty() {
         println!("Name cannot be empty");
         return show_new_project_interface();
     }
     let mut projects = load_projects();
-    let path_base = get_config_dir().join("projects");
-    if !path_base.exists() {
-        std::fs::create_dir(&path_base).unwrap();
-    }
-    let path = path_base.join(name);
+    let name_normalized = name
+        .replace(' ', "-")
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect::<String>();
+    let home_dir = PathBuf::from(env::var("HOME").unwrap_or("/".to_string()));
+    let project_folder = home_dir.join("projects");
+    let default_path_string = project_folder
+        .join(name_normalized)
+        .to_str()
+        .unwrap()
+        .to_string();
+    let path = if path.is_empty() {
+        default_path_string
+    } else {
+        path.to_string()
+    };
+    let path = PathBuf::from(path).canonicalize().unwrap();
     if path.exists() {
-        println!("Project already exists");
-        return;
+        println!("A project with that path already exists");
+        return show_new_project_interface();
     }
     std::fs::create_dir(&path).unwrap();
     let mut project = Project {
@@ -319,6 +369,7 @@ fn show_home_interface(prompt: &str) {
             "Add project",
             "Edit project",
             "Delete projects",
+            "New project",
             "Quit (Esc)",
         ])
         .default(0)
@@ -336,8 +387,8 @@ fn show_home_interface(prompt: &str) {
         1 => show_add_project_interface(),
         2 => show_select_projects_interface(Action::Edit, Some("Select a project to edit")),
         3 => show_select_projects_interface(Action::Delete, Some("Select projects to delete")),
-        4 => quit(),
-        _ => {}
+        4 => show_new_project_interface(),
+        _ => quit(),
     }
 }
 
@@ -370,7 +421,7 @@ impl IntoString for std::ffi::OsString {
 }
 
 fn show_add_project_interface() {
-    let current_dir = std::env::current_dir().unwrap();
+    let current_dir = env::current_dir().unwrap();
     let default_name = current_dir
         .file_name()
         .unwrap()
@@ -447,7 +498,7 @@ fn save_projects(projects: &[Project]) {
 
 fn add_project(name: &str, path: &str) {
     let mut projects = load_projects();
-    let default_path = std::env::current_dir().unwrap();
+    let default_path = env::current_dir().unwrap();
     let default_name = default_path.file_name().unwrap().to_str().unwrap();
     let name = if name.is_empty() { default_name } else { name };
     let path = if path.is_empty() {
@@ -501,9 +552,11 @@ fn show_overwrite_project_interface(project: &Project) {
     }
 }
 
-fn project_already_exists(name: &str) -> bool {
+fn project_already_exists(name_or_path: &str) -> bool {
     let projects = load_projects();
-    projects.iter().any(|p| p.name == name)
+    projects
+        .iter()
+        .any(|p| p.name == name_or_path || p.path == name_or_path)
 }
 
 fn show_select_projects_interface(action: Action, prompt: Option<&str>) {
@@ -674,8 +727,8 @@ fn open_project(name: &str, open_action: OpenAction) {
 fn change_directory(new_dir: &str) -> io::Result<()> {
     let path = std::path::Path::new(&new_dir);
     if path.exists() && path.is_dir() {
-        std::env::set_current_dir(path)?;
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        env::set_current_dir(path)?;
+        let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
         Command::new(shell).status()?;
     } else {
         eprintln!("cd: {}: No such file or directory", new_dir);
@@ -685,7 +738,7 @@ fn change_directory(new_dir: &str) -> io::Result<()> {
 }
 
 fn open_in_editor(path: &str) -> io::Result<()> {
-    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vim".to_string());
+    let editor = env::var("EDITOR").unwrap_or_else(|_| "vim".to_string());
     Command::new(editor).arg(path).status()?;
     Ok(())
 }
