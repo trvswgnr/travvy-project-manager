@@ -324,14 +324,17 @@ fn new_project(name: &str, path: &str) {
         .to_str()
         .unwrap()
         .to_string();
-    let path = if path.is_empty() {
+    let path_string = if path.is_empty() {
         default_path_string
     } else {
         path.to_string()
     };
-    let path = PathBuf::from(path).canonicalize().unwrap();
+    let path = PathBuf::from(path_string.clone())
+        .canonicalize()
+        .unwrap_or_else(|_| create_path_with_parent_dirs(&path_string));
     if path.exists() {
         println!("A project with that path already exists");
+        println!("Path: {:?}", path);
         return show_new_project_interface();
     }
     std::fs::create_dir(&path).unwrap();
@@ -347,6 +350,19 @@ fn new_project(name: &str, path: &str) {
     projects.push(project.clone());
     save_projects(&projects);
     open_project(&project.name, OpenAction::OpenInTerminal);
+}
+
+fn create_path_with_parent_dirs(path: &str) -> PathBuf {
+    let path = PathBuf::from(path);
+    let parent = path.parent();
+    if parent.is_none() {
+        return path;
+    }
+    let parent = parent.unwrap();
+    if !parent.exists() {
+        create_path_with_parent_dirs(parent.to_str().unwrap());
+    }
+    path
 }
 
 fn show_home_interface(prompt: &str) {
@@ -495,6 +511,7 @@ fn save_projects(projects: &[Project]) {
     let mut file = File::create(get_config_dir().join("projects.json")).unwrap();
     let json = serde_json::to_string_pretty(&projects).unwrap();
     file.write_all(json.as_bytes()).unwrap();
+    *PROJECTS.lock().unwrap() = projects.to_vec();
 }
 
 fn add_project(name: &str, path: &str) {
@@ -647,11 +664,17 @@ fn show_select_projects_interface(action: Action, prompt: Option<&str>) {
             }
         }
         Action::Delete => {
+            let also_delete_dir = Confirm::with_theme(&ColorfulTheme::default())
+                .with_prompt("Also delete project directory?")
+                .default(false)
+                .interact()
+                .unwrap();
             delete_projects(
                 &selected_projects
                     .iter()
                     .map(|project| project.name.as_str())
                     .collect::<Vec<_>>(),
+                also_delete_dir,
             );
         }
         Action::Edit => {
@@ -668,8 +691,19 @@ fn delete_project(name: &str) {
     save_projects(&projects);
 }
 
-fn delete_projects(names: &[&str]) {
+fn delete_projects(names: &[&str], also_delete_dir: bool) {
     let mut projects = load_projects();
+    if also_delete_dir {
+        for name in names {
+            let project = projects
+                .iter()
+                .find(|project| project.name == *name)
+                .unwrap();
+            std::fs::remove_dir_all(&project.path).unwrap_or_else(|_| {
+                println!("Failed to delete project directory: {}", project.path)
+            });
+        }
+    }
     projects.retain(|project| !names.contains(&project.name.as_str()));
     save_projects(&projects);
 }
