@@ -346,6 +346,7 @@ fn new_project(name: &str, path: &str) {
     }
     projects.push(project.clone());
     save_projects(&projects);
+    open_project(&project.name, OpenAction::OpenInTerminal);
 }
 
 fn show_home_interface(prompt: &str) {
