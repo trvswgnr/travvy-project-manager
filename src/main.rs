@@ -117,11 +117,6 @@ fn main() {
     .long_version(VERSION)
     .about(about.as_str())
     .subcommand(
-        /*
-        tpm add "My Project" /path/to/project
-        tpm add "My Project"
-        tpm add
-        */
         SubCommand::with_name("add")
             .about("Add a new project")
             .arg(Arg::from_usage("<project_name> 'Project name'").required(false))
@@ -171,6 +166,21 @@ fn main() {
                     .short("n")
                     .takes_value(true)
                     .required(false),
+            )
+            .arg(
+                Arg::with_name("editor")
+                    .help("Open in editor instead of terminal")
+                    .short("e")
+                    .takes_value(false)
+                    .required(false),
+            )
+            .arg(
+                Arg::with_name("replace")
+                    .help("Replace current editor with project, instead of opening in a new window")
+                    .short("r")
+                    .takes_value(false)
+                    .required(false)
+                    .requires("editor"),
             ),
     )
     .subcommand(
@@ -243,7 +253,16 @@ fn main() {
                 show_select_projects_interface(Action::Open, Some("Select a project to open"));
                 return;
             }
-            open_project(name, OpenAction::OpenInTerminal);
+
+            let open_action = if open_matches.is_present("editor") {
+                OpenAction::OpenInEditor
+            } else {
+                OpenAction::OpenInTerminal
+            };
+
+            let replace_editor = open_matches.is_present("replace");
+            
+            open_project(name, open_action, replace_editor);
         }
         ("new", Some(new_matches)) => {
             let name = new_matches
@@ -349,7 +368,7 @@ fn new_project(name: &str, path: &str) {
     }
     projects.push(project.clone());
     save_projects(&projects);
-    open_project(&project.name, OpenAction::OpenInTerminal);
+    open_project(&project.name, OpenAction::OpenInTerminal, false);
 }
 
 fn create_path_with_parent_dirs(path: &str) -> PathBuf {
@@ -649,11 +668,11 @@ fn show_select_projects_interface(action: Action, prompt: Option<&str>) {
             match selection {
                 0 => {
                     let project = &selected_projects[0];
-                    open_project(&project.name, OpenAction::OpenInTerminal);
+                    open_project(&project.name, OpenAction::OpenInTerminal, false);
                 }
                 1 => {
                     for project in selected_projects {
-                        open_project(&project.name, OpenAction::OpenInEditor);
+                        open_project(&project.name, OpenAction::OpenInEditor, false);
                     }
                 }
                 2 => {
@@ -736,7 +755,7 @@ enum OpenAction {
     OpenInEditor,
 }
 
-fn open_project(name: &str, open_action: OpenAction) {
+fn open_project(name: &str, open_action: OpenAction, replace_editor: bool) {
     let mut projects = load_projects();
     if let Some((i, project)) = projects
         .clone()
@@ -751,7 +770,7 @@ fn open_project(name: &str, open_action: OpenAction) {
                 change_directory(&project.path).unwrap();
             }
             OpenAction::OpenInEditor => {
-                open_in_editor(&project.path).unwrap();
+                open_in_editor(&project.path, replace_editor).unwrap();
             }
         }
     } else {
@@ -772,9 +791,12 @@ fn change_directory(new_dir: &str) -> io::Result<()> {
     Ok(())
 }
 
-fn open_in_editor(path: &str) -> io::Result<()> {
+fn open_in_editor(path: &str, replace_editor: bool) -> io::Result<()> {
     let editor = env::var("EDITOR").unwrap_or_else(|_| "vim".to_string());
-    Command::new(editor).arg(path).status()?;
+    Command::new(&editor)
+        .arg(path)
+        .arg(if replace_editor && editor == "code" { "--reuse-window" } else { "" })
+        .status()?;
     Ok(())
 }
 
