@@ -9,9 +9,14 @@ on:
       description:
         description: 'Description for the release'
         required: true
+  push:
+    tags:
+      - '*'
 
 env:
   CARGO_TERM_COLOR: always
+  VERSION: ${{ github.event.inputs.version || github.ref }}
+  DESCRIPTION: ${{ github.event.inputs.description || github.event.head_commit.message }}
 
 jobs:
   build:
@@ -69,9 +74,9 @@ jobs:
       id: create_release
       uses: ncipollo/release-action@v1
       with:
-        name: Release ${{ github.event.inputs.version }}
-        tag: ${{ github.event.inputs.version }}
-        body: ${{ github.event.inputs.description }}
+        name: Release ${{ env.VERSION }}
+        tag: ${{ env.VERSION }}
+        body: ${{ env.DESCRIPTION }}
         draft: false
         prerelease: false
         artifacts: "artifacts/**/*.tar.gz"
