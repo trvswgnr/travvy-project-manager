@@ -1,4 +1,4 @@
-use clap::{App, Arg, SubCommand};
+use clap::{App, Arg, ArgMatches, SubCommand, ValueHint};
 use dialoguer::{console, theme::ColorfulTheme, Confirm, Input, MultiSelect, Select};
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
@@ -10,6 +10,10 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
+
+const APP_NAME: &str = "tpm";
+
+const VALID_SHELLS: [&str; 2] = ["bash", "zsh"];
 
 lazy_static! {
     static ref PROJECTS: Mutex<Vec<Project>> = Mutex::new(load_projects_from_disk());
@@ -116,6 +120,17 @@ fn main() {
     .version(VERSION)
     .long_version(VERSION)
     .about(about.as_str())
+    .arg(
+        Arg::with_name("completions")
+            .long("completions")
+            .value_name("SHELL")
+            .help("Installs shell completions for the current user")
+            .forbid_empty_values(false)
+            .min_values(0)
+            .possible_values(VALID_SHELLS)
+            .value_hint(ValueHint::Other)
+            .required(false),
+    )
     .subcommand(
         SubCommand::with_name("add")
             .about("Add a new project")
@@ -123,13 +138,13 @@ fn main() {
             .arg(Arg::from_usage("<project_path> 'Project path'").required(false))
             .arg(
                 Arg::with_name("name")
-                    .short("n")
+                    .short('n')
                     .takes_value(true)
                     .required(false),
             )
             .arg(
                 Arg::with_name("path")
-                    .short("p")
+                    .short('p')
                     .takes_value(true)
                     .required(false),
             ),
@@ -141,7 +156,7 @@ fn main() {
             .arg(Arg::from_usage("<project_name> 'Project name'").required(false))
             .arg(
                 Arg::with_name("name")
-                    .short("n")
+                    .short('n')
                     .takes_value(true)
                     .required(false),
             ),
@@ -152,7 +167,7 @@ fn main() {
             .arg(Arg::from_usage("<project_name> 'Project name'").required(false))
             .arg(
                 Arg::with_name("name")
-                    .short("n")
+                    .short('n')
                     .takes_value(true)
                     .required(false),
             ),
@@ -160,24 +175,28 @@ fn main() {
     .subcommand(
         SubCommand::with_name("open")
             .about("Open a project")
-            .arg(Arg::from_usage("<project_name> 'Project name'").required(false))
+            .arg(
+                Arg::from_usage("<project_name> 'Project name'")
+                    .required(false)
+                    .value_hint(ValueHint::Other),
+            )
             .arg(
                 Arg::with_name("name")
-                    .short("n")
+                    .short('n')
                     .takes_value(true)
                     .required(false),
             )
             .arg(
                 Arg::with_name("editor")
                     .help("Open in editor instead of terminal")
-                    .short("e")
+                    .short('e')
                     .takes_value(false)
                     .required(false),
             )
             .arg(
                 Arg::with_name("replace")
                     .help("Replace current editor with project, instead of opening in a new window")
-                    .short("r")
+                    .short('r')
                     .takes_value(false)
                     .required(false)
                     .requires("editor"),
@@ -189,15 +208,31 @@ fn main() {
             .arg(Arg::from_usage("<project_name> 'Project name'").required(false))
             .arg(
                 Arg::with_name("name")
-                    .short("n")
+                    .short('n')
                     .takes_value(true)
                     .required(false),
             ),
     )
     .get_matches();
 
-    match matches.subcommand() {
-        ("add", Some(add_matches)) => {
+    // install completions if the user passed the --completions flag
+    if matches.args_present() && matches.contains_id("completions") {
+        let confirmed = Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt("Install completions?")
+            .default(true)
+            .interact()
+            .unwrap_or_else(|e| panic!("Error: {}", e));
+        if !confirmed {
+            exit_with(Ok("Goodbye!"));
+        }
+        let shell = matches
+            .value_of("completions")
+            .map_or_else(get_current_shell, |s| s.to_string());
+        gen_completions(&shell);
+    }
+
+    match matches.subcommand().unwrap_or(("", &ArgMatches::default())) {
+        ("add", add_matches) => {
             let name = add_matches
                 .value_of("name")
                 .unwrap_or(add_matches.value_of("project_name").unwrap_or(""));
@@ -209,7 +244,7 @@ fn main() {
             }
             add_project(name, path);
         }
-        ("list", Some(_)) => {
+        ("list", _) => {
             let projects = load_projects();
             if projects.is_empty() {
                 return select_no_projects_found();
@@ -224,7 +259,7 @@ fn main() {
                 .interact_opt()
                 .unwrap_or(None);
         }
-        ("delete", Some(delete_matches)) => {
+        ("delete", delete_matches) => {
             let name = delete_matches
                 .value_of("name")
                 .unwrap_or(delete_matches.value_of("project_name").unwrap_or(""));
@@ -234,7 +269,7 @@ fn main() {
             }
             delete_project(name);
         }
-        ("edit", Some(edit_matches)) => {
+        ("edit", edit_matches) => {
             let name = edit_matches
                 .value_of("name")
                 .unwrap_or(edit_matches.value_of("project_name").unwrap_or(""));
@@ -245,7 +280,7 @@ fn main() {
             }
             edit_project(name);
         }
-        ("open", Some(open_matches)) => {
+        ("open", open_matches) => {
             let name = open_matches
                 .value_of("name")
                 .unwrap_or(open_matches.value_of("project_name").unwrap_or(""));
@@ -261,10 +296,10 @@ fn main() {
             };
 
             let replace_editor = open_matches.is_present("replace");
-            
+
             open_project(name, open_action, replace_editor);
         }
-        ("new", Some(new_matches)) => {
+        ("new", new_matches) => {
             let name = new_matches
                 .value_of("name")
                 .unwrap_or(new_matches.value_of("project_name").unwrap_or(""));
@@ -274,6 +309,130 @@ fn main() {
             new_project(name, "");
         }
         _ => show_home_interface("What would you like to do?"),
+    }
+}
+
+/// gets the current shell from the SHELL environment variable
+/// 
+/// if shell is not in VALID_SHELLS, exits with an error
+fn get_current_shell() -> String {
+    let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+    let shell = shell.split('/').last().unwrap_or("sh");
+    // check if shell is in VALID_SHELLS
+    if VALID_SHELLS.contains(&shell) {
+        println!("Detected shell: {shell}");
+        return shell.to_string();
+    }
+    let msg = format!(
+        "Invalid shell: {shell}. Valid shells: {valid_shells}",
+        valid_shells = VALID_SHELLS.join(", ")
+    );
+    exit_with(Err(msg.into()));
+}
+
+fn get_path_to_shell_profile(shell: &str) -> PathBuf {
+    let home_dir = PathBuf::from(env::var("HOME").unwrap_or("/".to_string()));
+    match shell {
+        "bash" => home_dir.join(".bash_profile"),
+        "zsh" => home_dir.join(".zshrc"),
+        _ => exit_with(Err("Invalid shell".into())),
+    }
+}
+
+fn gen_completions(shell: &str) {
+    let script = r#"
+__tpm() {
+    local cur
+    local prev
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    case ${COMP_CWORD} in
+    1)
+        COMPREPLY=($(compgen -W "open add edit delete new" -- ${cur}))
+        ;;
+    2)
+        case ${prev} in
+        open | edit | delete)
+            COMPREPLY=($(compgen -W "$(cat {%config_dir%}/project_names.txt)" -- ${cur}))
+            ;;
+        *)
+            ;;
+        esac
+        ;;
+    esac
+}
+
+complete -F __tpm {%app_name%}
+"#;
+
+    let config_dir = get_config_dir()
+        .canonicalize()
+        .unwrap_or_else(|e| exit_with(Err(e.into())));
+    let config_dir_str = config_dir
+        .to_str()
+        .unwrap_or_else(|| exit_with(Err("Problem converting config dir to string".into())));
+    let script = script
+        .replace("{%app_name%}", APP_NAME)
+        .replace("{%config_dir%}", config_dir_str);
+
+    let completions_filename = format!("{}_completions.sh", APP_NAME);
+    let completions_file = config_dir.join(&completions_filename);
+    let mut file = File::create(&completions_file).unwrap_or_else(|e| exit_with(Err(e.into())));
+    file.write_all(script.as_bytes())
+        .unwrap_or_else(|e| exit_with(Err(e.into())));
+
+    let shell_profile = get_path_to_shell_profile(shell);
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&shell_profile)
+        .unwrap_or_else(|e| exit_with(Err(e.into())));
+    let script = format!(
+        "\n# {} completions\nsource {}\n",
+        APP_NAME,
+        completions_file.to_str().unwrap()
+    );
+
+    // check if the file already contains the script
+    let mut contents = String::new();
+    let mut read_file = File::open(&shell_profile)
+        .unwrap_or_else(|e| exit_with(Err(e.into())));
+    read_file.read_to_string(&mut contents)
+        .unwrap_or_else(|e| exit_with(Err(e.into())));
+    // check if it contains `source path/to/tpm_completions.sh`
+    if contents.lines().any(|line| line.contains("source") && line.contains(&completions_filename)) {
+        let msg = format!(
+            "Completions already installed for {:?} in {:?}",
+            shell,
+            shell_profile.to_str().unwrap()
+        );
+        exit_with(Ok(&msg));
+    }
+
+    file.write_all(script.as_bytes())
+        .unwrap_or_else(|e| exit_with(Err(e.into())));
+
+    let msg = format!(
+        "Completions installed for {} in {:?}",
+        shell,
+        shell_profile.to_str().unwrap()
+    );
+    exit_with(Ok(&msg));
+}
+
+fn exit_with(result: Result<&str, DynErr>) -> ! {
+    match result {
+        Ok(msg) => {
+            if !msg.is_empty() {
+                println!("{}", msg);
+            }
+            std::process::exit(0);
+        }
+        Err(msg) => {
+            if !msg.to_string().is_empty() {
+                println!("{}", msg);
+            }
+            std::process::exit(1);
+        }
     }
 }
 
@@ -531,6 +690,15 @@ fn save_projects(projects: &[Project]) {
     let json = serde_json::to_string_pretty(&projects).unwrap();
     file.write_all(json.as_bytes()).unwrap();
     *PROJECTS.lock().unwrap() = projects.to_vec();
+
+    // also save a list of project names to a file for use in bash completion
+    let mut file = File::create(get_config_dir().join("project_names.txt")).unwrap();
+    let mut names = Vec::new();
+    for project in projects {
+        names.push(project.name.as_str());
+    }
+    let names = names.join("\n");
+    file.write_all(names.as_bytes()).unwrap();
 }
 
 fn add_project(name: &str, path: &str) {
@@ -795,7 +963,11 @@ fn open_in_editor(path: &str, replace_editor: bool) -> io::Result<()> {
     let editor = env::var("EDITOR").unwrap_or_else(|_| "vim".to_string());
     Command::new(&editor)
         .arg(path)
-        .arg(if replace_editor && editor == "code" { "--reuse-window" } else { "" })
+        .arg(if replace_editor && editor == "code" {
+            "--reuse-window"
+        } else {
+            ""
+        })
         .status()?;
     Ok(())
 }
@@ -810,7 +982,7 @@ fn get_config_dir() -> std::path::PathBuf {
         // use the home directory
         home_dir
     };
-    let config_dir = base_dir.join("tpm");
+    let config_dir = base_dir.join(APP_NAME);
     if !config_dir.exists() {
         std::fs::create_dir(&config_dir).unwrap();
     }
