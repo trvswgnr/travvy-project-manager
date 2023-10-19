@@ -2,24 +2,34 @@ use clap::{App, Arg, ArgMatches, SubCommand, ValueHint};
 use dialoguer::{console, theme::ColorfulTheme, Confirm, Input, MultiSelect, Select};
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
-use std::env;
-use std::fs::File;
-use std::io::{self, Read, Write};
-use std::path::PathBuf;
-use std::process::Command;
-use std::sync::Mutex;
-use std::time::{Duration, SystemTime};
+use std::{
+    collections::HashSet,
+    env,
+    error::Error,
+    ffi::OsString,
+    fmt,
+    fs::{self, File},
+    io::{self, Read, Write},
+    path::{Path, PathBuf},
+    process::{self, Command},
+    sync::Mutex,
+    time::{Duration, SystemTime},
+};
 
+/// the app name, used everywhere
 const APP_NAME: &str = "tpm";
-
 const VALID_SHELLS: [&str; 2] = ["bash", "zsh"];
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+const ABOUT: &str = env!("CARGO_PKG_DESCRIPTION");
 
 lazy_static! {
     static ref PROJECTS: Mutex<Vec<Project>> = Mutex::new(load_projects_from_disk());
 }
 
-// a global counter for home many times we've visited the home interface
+/// a global counter for home many times we've visited the home interface
+///
+/// right now, we use it to show the welcome screen only on the first visit,
+/// but future plans include using it to show a different messages on sequential visits
 static mut HOME_INTERFACE_VISITS: Mutex<usize> = Mutex::new(0);
 
 fn increment_visits() {
@@ -49,7 +59,7 @@ enum DynErr {
     String(String),
     Io(io::Error),
     Serde(serde_json::Error),
-    Std(Box<dyn std::error::Error>),
+    Std(Box<dyn Error>),
 }
 
 impl From<String> for DynErr {
@@ -64,8 +74,8 @@ impl From<&str> for DynErr {
     }
 }
 
-impl From<std::ffi::OsString> for DynErr {
-    fn from(err: std::ffi::OsString) -> Self {
+impl From<OsString> for DynErr {
+    fn from(err: OsString) -> Self {
         DynErr::String(err.into_string().unwrap())
     }
 }
@@ -82,14 +92,14 @@ impl From<serde_json::Error> for DynErr {
     }
 }
 
-impl From<Box<dyn std::error::Error>> for DynErr {
-    fn from(err: Box<dyn std::error::Error>) -> Self {
+impl From<Box<dyn Error>> for DynErr {
+    fn from(err: Box<dyn Error>) -> Self {
         DynErr::Std(err)
     }
 }
 
-impl std::fmt::Display for DynErr {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl fmt::Display for DynErr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             DynErr::String(err) => write!(f, "{}", err),
             DynErr::Io(err) => write!(f, "{}", err),
@@ -105,8 +115,6 @@ enum Action {
     Delete,
     Edit,
 }
-const VERSION: &str = env!("CARGO_PKG_VERSION");
-const ABOUT: &str = env!("CARGO_PKG_DESCRIPTION");
 
 fn main() {
     let about = "\n".to_string() + ABOUT;
@@ -313,7 +321,7 @@ fn main() {
 }
 
 /// gets the current shell from the SHELL environment variable
-/// 
+///
 /// if shell is not in VALID_SHELLS, exits with an error
 fn get_current_shell() -> String {
     let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
@@ -382,7 +390,7 @@ complete -F __tpm {%app_name%}
         .unwrap_or_else(|e| exit_with(Err(e.into())));
 
     let shell_profile = get_path_to_shell_profile(shell);
-    let mut file = std::fs::OpenOptions::new()
+    let mut file = fs::OpenOptions::new()
         .append(true)
         .open(&shell_profile)
         .unwrap_or_else(|e| exit_with(Err(e.into())));
@@ -394,12 +402,16 @@ complete -F __tpm {%app_name%}
 
     // check if the file already contains the script
     let mut contents = String::new();
-    let mut read_file = File::open(&shell_profile)
+    let mut read_file = File::open(&shell_profile).unwrap_or_else(|e| exit_with(Err(e.into())));
+    read_file
+        .read_to_string(&mut contents)
         .unwrap_or_else(|e| exit_with(Err(e.into())));
-    read_file.read_to_string(&mut contents)
-        .unwrap_or_else(|e| exit_with(Err(e.into())));
-    // check if it contains `source path/to/tpm_completions.sh`
-    if contents.lines().any(|line| line.contains("source") && line.contains(&completions_filename)) {
+
+    // check if contents contains `source path/to/{APP_NAME}_completions.sh`
+    if contents
+        .lines()
+        .any(|line| line.contains("source") && line.contains(&completions_filename))
+    {
         let msg = format!(
             "Completions already installed for {:?} in {:?}",
             shell,
@@ -425,13 +437,13 @@ fn exit_with(result: Result<&str, DynErr>) -> ! {
             if !msg.is_empty() {
                 println!("{}", msg);
             }
-            std::process::exit(0);
+            process::exit(0);
         }
         Err(msg) => {
             if !msg.to_string().is_empty() {
                 println!("{}", msg);
             }
-            std::process::exit(1);
+            process::exit(1);
         }
     }
 }
@@ -515,7 +527,7 @@ fn new_project(name: &str, path: &str) {
         println!("Path: {:?}", path);
         return show_new_project_interface();
     }
-    std::fs::create_dir(&path).unwrap();
+    fs::create_dir(&path).unwrap();
     let mut project = Project {
         name: name.to_string(),
         path: path.to_str().unwrap().to_string(),
@@ -602,14 +614,14 @@ fn select_no_projects_found() {
 
 fn quit<T>() -> T {
     println!("Goodbye!");
-    std::process::exit(0);
+    process::exit(0);
 }
 
 trait IntoString {
     fn into_string(self) -> Result<String, DynErr>;
 }
 
-impl IntoString for std::ffi::OsString {
+impl IntoString for OsString {
     fn into_string(self) -> Result<String, DynErr> {
         self.into_string().map_err(|err| err.into())
     }
@@ -663,8 +675,8 @@ impl Project {
     }
 }
 
-impl std::fmt::Display for Project {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl fmt::Display for Project {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{} ({})", self.name, self.path)
     }
 }
@@ -886,7 +898,7 @@ fn delete_projects(names: &[&str], also_delete_dir: bool) {
                 .iter()
                 .find(|project| project.name == *name)
                 .unwrap();
-            std::fs::remove_dir_all(&project.path).unwrap_or_else(|_| {
+            fs::remove_dir_all(&project.path).unwrap_or_else(|_| {
                 println!("Failed to delete project directory: {}", project.path)
             });
         }
@@ -947,7 +959,7 @@ fn open_project(name: &str, open_action: OpenAction, replace_editor: bool) {
 }
 
 fn change_directory(new_dir: &str) -> io::Result<()> {
-    let path = std::path::Path::new(&new_dir);
+    let path = Path::new(&new_dir);
     if path.exists() && path.is_dir() {
         env::set_current_dir(path)?;
         let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
@@ -972,7 +984,7 @@ fn open_in_editor(path: &str, replace_editor: bool) -> io::Result<()> {
     Ok(())
 }
 
-fn get_config_dir() -> std::path::PathBuf {
+fn get_config_dir() -> PathBuf {
     // check if a .config folder exists in the home directory
     let home_dir = dirs::home_dir().unwrap();
     let xdg_config_dir = home_dir.join(".config");
@@ -984,7 +996,7 @@ fn get_config_dir() -> std::path::PathBuf {
     };
     let config_dir = base_dir.join(APP_NAME);
     if !config_dir.exists() {
-        std::fs::create_dir(&config_dir).unwrap();
+        fs::create_dir(&config_dir).unwrap();
     }
 
     config_dir
@@ -997,7 +1009,7 @@ fn open_projects_file(read: bool, write: bool, create: bool) -> File {
     if !projects_file.exists() {
         File::create(&projects_file).unwrap();
     }
-    std::fs::OpenOptions::new()
+    fs::OpenOptions::new()
         .read(read)
         .write(write)
         .create(create)
