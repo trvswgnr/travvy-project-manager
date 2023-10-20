@@ -3,10 +3,16 @@ name = "travvy-project-manager"
 version = "0.1.4"
 edition = "2021"
 description = "A simple project manager for the command line"
+license = "MIT"
+readme = "README.md"
 
 [[bin]]
 name = "tpm"
 path = "src/main.rs"
+
+[lib]
+name = "tpm_lib"
+path = "src/lib.rs"
 
 [dependencies]
 clap = "3.1.3"
