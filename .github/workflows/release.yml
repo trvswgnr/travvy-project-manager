@@ -15,8 +15,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  VERSION: ${{ github.event.inputs.version || github.ref }}
-  DESCRIPTION: ${{ github.event.inputs.description || github.event.head_commit.message }}
+  VERSION: ${{ github.event.inputs.version || '' }}
+  DESCRIPTION: ${{ github.event.inputs.description || '' }}
 
 jobs:
   build:
@@ -69,14 +69,37 @@ jobs:
       uses: actions/download-artifact@v2
       with:
         path: artifacts/
+    
+    - name: Format
+      id: format
+      run: |
+        # if the version is not set, use the latest tag
+        if [[ -z "${{ env.VERSION }}" ]]; then
+          export VERSION="$(git describe --tags --abbrev=0)"
+        else
+          export VERSION="${{ env.VERSION }}"
+        fi
+
+        # if the description is not set, use the message of the latest tag. if there is no tag message, use the commit message
+        if [[ -z "${{ env.DESCRIPTION }}" ]]; then
+          export DESCRIPTION="$(git tag -l --format='%(contents)' $VERSION)"
+          if [[ -z "${{ env.DESCRIPTION }}" ]]; then
+            export DESCRIPTION="$(git log -1 --pretty=%B)"
+          fi
+        else
+          export DESCRIPTION="${{ env.DESCRIPTION }}"
+        fi
+
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "description=$DESCRIPTION" >> $GITHUB_OUTPUT
 
     - name: Create GitHub Release
       id: create_release
       uses: ncipollo/release-action@v1
       with:
-        name: Release ${{ env.VERSION }}
-        tag: ${{ env.VERSION }}
-        body: ${{ env.DESCRIPTION }}
+        name: Release ${{ steps.format.outputs.version }}
+        tag: ${{ steps.format.outputs.version }}
+        body: ${{ steps.format.outputs.description }}
         draft: false
         prerelease: false
         artifacts: "artifacts/**/*.tar.gz"
