@@ -84,9 +84,9 @@ jobs:
 
         # if the description is not set, use the message of the latest tag. if there is no tag message, use the commit message
         if [[ -z "${{ env.DESCRIPTION }}" ]]; then
-          export DESCRIPTION="$(git tag -l --format='%(contents)' $VERSION)"
-          if [[ -z "${{ env.DESCRIPTION }}" ]]; then
-            export DESCRIPTION="$(git log -1 --pretty=%B)"
+          export DESCRIPTION="$(git tag -l --format='%(contents)' $VERSION | xargs)"
+          if [[ -z "$DESCRIPTION" ]]; then
+            export DESCRIPTION="$(git log -1 --pretty=%B) | xargs"
           fi
         else
           export DESCRIPTION="${{ env.DESCRIPTION }}"
