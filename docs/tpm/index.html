@@ -1,0 +1,125 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Travvy’s Project Manager (`tpm`)"><title>tpm - Rust</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceSerif4-Bold-a2c9cd1067f8b328.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2"><link rel="stylesheet" href="../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../static.files/rustdoc-fa3bb1812debf86c.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="tpm" data-themes="" data-resource-suffix="" data-rustdoc-version="1.74.0-nightly (7b4d9e155 2023-09-28)" data-channel="nightly" data-search-js="search-8be46b629f5f14a8.js" data-settings-js="settings-74424d7eec62a23e.js" ><script src="../static.files/storage-fec3eaa3851e447d.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-c5bd66d33317d69f.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-5d8b3c7633ad77ba.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc mod crate"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle">&#9776;</button><a class="logo-container" href="../tpm/index.html"><img class="rust-logo" src="../static.files/rust-logo-151179464ae7ed46.svg" alt="logo"></a></nav><nav class="sidebar"><a class="logo-container" href="../tpm/index.html"><img class="rust-logo" src="../static.files/rust-logo-151179464ae7ed46.svg" alt="logo"></a><h2 class="location"><a href="#">Crate tpm</a></h2><div class="sidebar-elems"><ul class="block"><li class="version">Version 0.1.4</li><li><a id="all-types" href="all.html">All Items</a></li></ul><section><ul class="block"><li><a href="#functions">Functions</a></li></ul></section></div></nav><main><div class="width-limiter"><nav class="sub"><form class="search-form"><span></span><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><a href="../help.html">?</a></div><div id="settings-menu" tabindex="-1"><a href="../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="main-heading"><h1>Crate <a class="mod" href="#">tpm</a><button id="copy-path" title="Copy item path to clipboard"><img src="../static.files/clipboard-7571035ce49a181d.svg" width="19" height="18" alt="Copy item path"></button></h1><span class="out-of-band"><a class="src" href="../src/tpm/main.rs.html#1-172">source</a> · <button id="toggle-all-docs" title="collapse all docs">[<span>&#x2212;</span>]</button></span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><h2 id="travvys-project-manager-tpm"><a href="#travvys-project-manager-tpm">Travvy’s Project Manager (<code>tpm</code>)</a></h2>
+<p><code>tpm</code> is a simple command-line project manager that I made to help me organize
+and manage my projects efficiently. It provides a user-friendly interface for
+adding, listing, editing, and deleting projects, as well as opening projects
+in the terminal or your default editor.</p>
+<p><img src="https://github.com/trvswgnr/travvy-project-manager/assets/8974888/119cc19f-4b4f-4d08-9bc0-fba8cc463707" alt="tpm-demo" /></p>
+<h3 id="features"><a href="#features">Features</a></h3>
+<ul>
+<li>
+<p>Interactive mode: By default, <code>tpm</code> starts in interactive mode, which allows
+you to perform actions on your projects using a simple command-line interface.</p>
+</li>
+<li>
+<p>Add a new project: You can easily add a new project by providing a name and
+path. <code>tpm</code> will create a project entry and save it for future reference.</p>
+</li>
+<li>
+<p>List all projects: <code>tpm</code> allows you to view a list of all your projects.
+You can select a project to perform various actions on it.</p>
+</li>
+<li>
+<p>Edit a project: If you need to update the name or path of a project, <code>tpm</code>
+provides an interface to edit the project details.</p>
+</li>
+<li>
+<p>Delete a project: If a project is no longer needed, you can delete it from
+<code>tpm</code>. You can select multiple projects to delete at once.</p>
+</li>
+<li>
+<p>Open a project: <code>tpm</code> allows you to open a project in either the terminal
+or your default editor. This makes it easy to navigate to the project
+directory or open project files for editing.</p>
+</li>
+</ul>
+<h3 id="installation"><a href="#installation">Installation</a></h3><h4 id="pre-built-binaries"><a href="#pre-built-binaries">Pre-built Binaries</a></h4>
+<p>Pre-built binaries are available for Linux, macOS, and Windows. You can
+download the latest release from the <a href="https://github.com/trvswgnr/travvy-project-manager/releases">releases page</a>.</p>
+<h4 id="from-source"><a href="#from-source">From Source</a></h4>
+<p>To install <code>tpm</code> from source, follow these steps:</p>
+<ol>
+<li>
+<p>Make sure you have <a href="https://crablang.org">CrabLang</a> (or R*st) installed on your system. If not,
+you can install it from the <a href="https://github.com/crablang/crab">official CrabLang repo</a>.</p>
+</li>
+<li>
+<p>Install the <code>tpm</code> executable:</p>
+<div class="example-wrap"><pre class="language-shell"><code>crabgo install --git https://github.com/trvswgnr/travvy-project-manager.git
+</code></pre></div></li>
+</ol>
+<h3 id="usage"><a href="#usage">Usage</a></h3>
+<p><code>tpm</code> provides a simple and intuitive command-line interface. You can start
+it in interactive mode by running:</p>
+<div class="example-wrap"><pre class="language-shell"><code>tpm
+</code></pre></div>
+<p>You can also pass in subcommands and arguments directly. Here are some
+examples of how to use <code>tpm</code>:</p>
+<ul>
+<li>
+<p>Add a project (from an existing directory):</p>
+<div class="example-wrap"><pre class="language-shell"><code>tpm add # will prompt for name and path
+# or
+tpm add my-project path/to/my/project
+# or
+tpm add my-project # path will default to the current working directory
+</code></pre></div>
+<p><strong>Note:</strong> If you do not provide a path, <code>tpm</code> will default to the path of
+the current working directory. If you do not provide a name, <code>tpm</code> will use
+the name of the directory.</p>
+</li>
+<li>
+<p>Open a project:</p>
+<div class="example-wrap"><pre class="language-shell"><code>tpm open my-project
+</code></pre></div></li>
+<li>
+<p>List all projects:</p>
+<div class="example-wrap"><pre class="language-shell"><code>tpm list
+</code></pre></div></li>
+<li>
+<p>Edit a project:</p>
+<div class="example-wrap"><pre class="language-shell"><code>tpm edit my-project
+</code></pre></div></li>
+<li>
+<p>Delete a project:</p>
+<div class="example-wrap"><pre class="language-shell"><code>tpm delete my-project
+</code></pre></div></li>
+<li>
+<p>Create a new project:</p>
+<div class="example-wrap"><pre class="language-shell"><code>tpm new # will prompt for name and path
+</code></pre></div>
+<p><strong>Note:</strong> This will create a new project folder in the tpm config directory.
+if you want to create a new project from an existing directory, use <code>tpm add</code>.</p>
+</li>
+</ul>
+<p>For more information on available commands and options, you can use the <code>--help</code> flag:</p>
+<div class="example-wrap"><pre class="language-shell"><code>tpm --help
+</code></pre></div><h3 id="configuration"><a href="#configuration">Configuration</a></h3>
+<p><code>tpm</code> stores project information in a JSON file located at
+<code>~/.config/tpm/projects.json</code> (or the home directory if .config does not exist).
+You can manually edit this file if needed, but it is recommended to use
+<code>tpm</code>’s built-in commands for adding, editing, and deleting projects.</p>
+<h3 id="contributing"><a href="#contributing">Contributing</a></h3>
+<p>If you would like to contribute to <code>tpm</code>, feel free to fork the repository
+and submit a pull request. You can also open issues for bug reports
+or feature requests.</p>
+<p>When contributing, please follow the existing code style and conventions.
+Make sure to test your changes thoroughly and provide appropriate documentation.</p>
+<h3 id="license"><a href="#license">License</a></h3>
+<p><code>tpm</code> is licensed under the MIT License. See the <a href="https://github.com/trvswgnr/travvy-project-manager/blob/main/LICENSE">LICENSE</a> file
+for more details.</p>
+<h3 id="acknowledgements"><a href="#acknowledgements">Acknowledgements</a></h3>
+<p><code>tpm</code> makes use of the following open-source libraries:</p>
+<ul>
+<li><a href="https://crates.io/crates/clap">clap</a> - Command-line argument parsing</li>
+<li><a href="https://crates.io/crates/serde">serde</a> - Serialization and deserialization framework</li>
+<li><a href="https://crates.io/crates/serde_json">serde_json</a> - JSON support for serde</li>
+<li><a href="https://crates.io/crates/dialoguer">dialoguer</a>- User-friendly terminal user interface</li>
+<li><a href="https://crates.io/crates/lazy_static">lazy_static</a> - Lazily evaluated statics for Rust</li>
+</ul>
+<h3 id="contact"><a href="#contact">Contact</a></h3>
+<p>If you have any questions or suggestions regarding <code>tpm</code>, you can reach out
+to the project maintainer at <a href="mailto:dev@travisaw.com">dev@travisaw.com</a>.</p>
+<hr />
+<p>Thanks for checking this out! I hope you find it useful for managing your
+projects. If you have any feedback, please let me know.</p>
+</div></details><h2 id="functions" class="small-section-header"><a href="#functions">Functions</a></h2><ul class="item-table"><li><div class="item-name"><a class="fn" href="fn.main.html" title="fn tpm::main">main</a><span title="Restricted Visibility">&nbsp;🔒</span> </div></li></ul></section></div></main></body></html>

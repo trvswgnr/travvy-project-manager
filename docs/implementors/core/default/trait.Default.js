@@ -1,0 +1,3 @@
+(function() {var implementors = {
+"tpm_lib":[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/default/trait.Default.html\" title=\"trait core::default::Default\">Default</a> for <a class=\"struct\" href=\"tpm_lib/struct.Project.html\" title=\"struct tpm_lib::Project\">Project</a>"]]
+};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
