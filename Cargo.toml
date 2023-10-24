@@ -4,7 +4,19 @@ version = "0.1.14"
 edition = "2021"
 description = "A simple project manager for the command line"
 license = "MIT"
+license-file = "LICENSE"
 readme = "README.md"
+categories = ["command-line-utilities"]
+keywords = [
+    "project",
+    "manager",
+    "cli",
+    "command",
+    "line",
+    "rust",
+    "travvy",
+    "crab",
+]
 
 [[bin]]
 name = "tpm"
@@ -28,9 +40,5 @@ lto = true
 debug-assertions = false
 codegen-units = 1
 panic = "abort"
-incremental = false
+incremental = true
 strip = true
-
-[package.metadata.binstall]
-bin-dir = "{ bin }-{ target }{ binary-ext }"
-pkg-url = "{ repo }/releases/download/v{ version }/tpm-{ target }{ archive-suffix }"
