@@ -86,7 +86,7 @@ use std::{
 
 lazy_static! {
     /// A thread-safe lazily-evaluated static variable that holds a list of projects.
-    static ref PROJECTS: Mutex<Vec<Project>> = Mutex::new(load_projects_from_disk());
+    static ref PROJECTS: Mutex<Vec<Project>> = Mutex::new(load_projects_from_disk().unwrap_or_default());
 }
 
 /// A shared resource that tracks the number of visits to the home interface.
@@ -229,20 +229,19 @@ where
     app
 }
 
-pub fn handler(matches: &ArgMatches) {
+pub fn handler(matches: &ArgMatches) -> Result<(), DynErr> {
     if matches.args_present() && matches.contains_id("completions") {
         let confirmed = Confirm::with_theme(&ColorfulTheme::default())
             .with_prompt("Install completions?")
             .default(true)
-            .interact()
-            .unwrap_or_else(|e| panic!("Error: {}", e));
+            .interact()?;
         if !confirmed {
-            exit_with(Ok("Goodbye!"));
+            return Ok(());
         }
         let shell = matches
             .value_of("completions")
-            .map_or_else(get_current_shell, |s| s.to_string());
-        gen_completions(&shell);
+            .map_or_else(get_current_shell, |s| Ok(s.to_string()))?;
+        gen_completions(&shell)?;
     }
 
     match matches.subcommand().unwrap_or(("", &ArgMatches::default())) {
@@ -256,10 +255,10 @@ pub fn handler(matches: &ArgMatches) {
             if name.is_empty() && path.is_empty() {
                 return show_add_project_interface();
             }
-            add_project(name, path);
+            add_project(name, path)?;
         }
         ("list", _) => {
-            let projects = load_projects();
+            let projects = load_projects()?;
             if projects.is_empty() {
                 return select_no_projects_found();
             }
@@ -278,10 +277,12 @@ pub fn handler(matches: &ArgMatches) {
                 .value_of("name")
                 .unwrap_or(delete_matches.value_of("project_name").unwrap_or(""));
             if name.is_empty() {
-                show_select_projects_interface(Action::Delete, Some("Select projects to delete"));
-                return;
+                return show_select_projects_interface(
+                    Action::Delete,
+                    Some("Select projects to delete"),
+                );
             }
-            delete_project(name);
+            delete_project(name)?;
         }
         ("edit", edit_matches) => {
             let name = edit_matches
@@ -289,18 +290,22 @@ pub fn handler(matches: &ArgMatches) {
                 .unwrap_or(edit_matches.value_of("project_name").unwrap_or(""));
 
             if name.is_empty() {
-                show_select_projects_interface(Action::Edit, Some("Select a project to edit"));
-                return;
+                return show_select_projects_interface(
+                    Action::Edit,
+                    Some("Select a project to edit"),
+                );
             }
-            edit_project(name);
+            edit_project(name)?;
         }
         ("open", open_matches) => {
             let name = open_matches
                 .value_of("name")
                 .unwrap_or(open_matches.value_of("project_name").unwrap_or(""));
             if name.is_empty() {
-                show_select_projects_interface(Action::Open, Some("Select a project to open"));
-                return;
+                return show_select_projects_interface(
+                    Action::Open,
+                    Some("Select a project to open"),
+                );
             }
 
             let open_action = if open_matches.is_present("editor") {
@@ -311,7 +316,7 @@ pub fn handler(matches: &ArgMatches) {
 
             let replace_editor = open_matches.is_present("replace");
 
-            open_project(name, open_action, replace_editor);
+            open_project(name, open_action, replace_editor)?;
         }
         ("new", new_matches) => {
             let name = new_matches
@@ -320,10 +325,14 @@ pub fn handler(matches: &ArgMatches) {
             if name.is_empty() {
                 return show_new_project_interface();
             }
-            new_project(name, "");
+            new_project(name, "")?;
         }
-        _ => show_home_interface("What would you like to do?"),
-    }
+        _ => {
+            show_home_interface("What would you like to do?")?;
+        }
+    };
+
+    Ok(())
 }
 
 /// Increments the number of visits to the home interface by one.
@@ -334,21 +343,18 @@ pub fn handler(matches: &ArgMatches) {
 /// without any form of synchronization. It is the caller's responsibility to ensure
 /// that this function is only called from a single thread at a time, or to provide
 /// appropriate synchronization mechanisms to prevent data races.
-pub fn increment_visits() {
+pub fn increment_visits() -> Result<(), DynErr> {
     unsafe {
-        let mut visits = HOME_INTERFACE_VISITS
-            .lock()
-            .unwrap_or_else(|e| exit_with(Err(e.into())));
+        let mut visits = HOME_INTERFACE_VISITS.lock()?;
         *visits += 1;
     }
+    Ok(())
 }
 
-pub fn get_visits() -> usize {
+pub fn get_visits() -> Result<usize, DynErr> {
     unsafe {
-        let visits = HOME_INTERFACE_VISITS
-            .lock()
-            .unwrap_or_else(|e| exit_with(Err(e.into())));
-        *visits
+        let visits = HOME_INTERFACE_VISITS.lock()?;
+        Ok(*visits)
     }
 }
 
@@ -386,6 +392,15 @@ impl From<dialoguer::Error> for DynErr {
     }
 }
 
+impl<T: fmt::Display> From<Option<T>> for DynErr {
+    fn from(err: Option<T>) -> Self {
+        match err {
+            Some(err) => DynErr::String(err.to_string()),
+            None => DynErr::String("".to_string()),
+        }
+    }
+}
+
 impl From<&str> for DynErr {
     fn from(err: &str) -> Self {
         DynErr::String(err.to_string())
@@ -396,7 +411,7 @@ impl From<OsString> for DynErr {
     fn from(err: OsString) -> Self {
         DynErr::String(
             err.into_string()
-                .unwrap_or_else(|e| exit_with(Err(e.into()))),
+                .unwrap_or_else(|_| "Problem converting OsString to String".into()),
         )
     }
 }
@@ -452,31 +467,34 @@ pub enum Action {
 /// gets the current shell from the SHELL environment variable
 ///
 /// if shell is not in VALID_SHELLS, exits with an error
-pub fn get_current_shell() -> String {
+pub fn get_current_shell() -> Result<String, DynErr> {
     let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
     let shell = shell.split('/').last().unwrap_or("sh");
     // check if shell is in VALID_SHELLS
     if VALID_SHELLS.contains(&shell) {
         println!("Detected shell: {shell}");
-        return shell.to_string();
+        return Ok(shell.to_string());
     }
     let msg = format!(
         "Invalid shell: {shell}. Valid shells: {valid_shells}",
         valid_shells = VALID_SHELLS.join(", ")
     );
-    exit_with(Err(msg.into()));
+    Err(msg.into())
 }
 
-pub fn get_path_to_shell_profile(shell: &str) -> PathBuf {
+pub fn get_path_to_shell_profile(shell: &str) -> Result<PathBuf, DynErr> {
     let home_dir = PathBuf::from(env::var("HOME").unwrap_or("/".to_string()));
-    match shell {
+    let path = match shell {
         "bash" => home_dir.join(".bash_profile"),
         "zsh" => home_dir.join(".zshrc"),
-        _ => exit_with(Err("Invalid shell".into())),
-    }
+        _ => {
+            return Err("Invalid shell".into());
+        }
+    };
+    Ok(path)
 }
 
-pub fn gen_completions(shell: &str) {
+pub fn gen_completions(shell: &str) -> Result<(), DynErr> {
     let script = r#"
 __tpm() {
     local cur
@@ -502,41 +520,33 @@ __tpm() {
 complete -F __tpm {%app_name%}
 "#;
 
-    let config_dir = get_config_dir()
-        .canonicalize()
-        .unwrap_or_else(|e| exit_with(Err(e.into())));
+    let config_dir = get_config_dir()?.canonicalize()?;
     let config_dir_str = config_dir
         .to_str()
-        .unwrap_or_else(|| exit_with(Err("Problem converting config dir to string".into())));
+        .ok_or("Problem converting config dir to string")?;
     let script = script
         .replace("{%app_name%}", APP_NAME)
         .replace("{%config_dir%}", config_dir_str);
 
     let completions_filename = format!("{}_completions.sh", APP_NAME);
     let completions_file = config_dir.join(&completions_filename);
-    let mut file = File::create(&completions_file).unwrap_or_else(|e| exit_with(Err(e.into())));
-    file.write_all(script.as_bytes())
-        .unwrap_or_else(|e| exit_with(Err(e.into())));
+    let mut file = File::create(&completions_file)?;
+    file.write_all(script.as_bytes())?;
 
-    let shell_profile = get_path_to_shell_profile(shell);
-    let mut file = fs::OpenOptions::new()
-        .append(true)
-        .open(&shell_profile)
-        .unwrap_or_else(|e| exit_with(Err(e.into())));
+    let shell_profile = get_path_to_shell_profile(shell)?;
+    let mut file = fs::OpenOptions::new().append(true).open(&shell_profile)?;
     let script = format!(
         "\n# {} completions\nsource {}\n",
         APP_NAME,
-        completions_file.to_str().unwrap_or_else(|| exit_with(Err(
-            "Problem converting completions file to string".into()
-        )))
+        completions_file
+            .to_str()
+            .ok_or("Problem converting completions file to string")?
     );
 
     // check if the file already contains the script
     let mut contents = String::new();
-    let mut read_file = File::open(&shell_profile).unwrap_or_else(|e| exit_with(Err(e.into())));
-    read_file
-        .read_to_string(&mut contents)
-        .unwrap_or_else(|e| exit_with(Err(e.into())));
+    let mut read_file = File::open(&shell_profile)?;
+    read_file.read_to_string(&mut contents)?;
 
     // check if contents contains `source path/to/{APP_NAME}_completions.sh`
     if contents
@@ -546,44 +556,28 @@ complete -F __tpm {%app_name%}
         let msg = format!(
             "Completions already installed for {:?} in {:?}",
             shell,
-            shell_profile.to_str().unwrap_or_else(|| exit_with(Err(
-                "Problem converting shell profile to string".into()
-            )))
+            shell_profile
+                .to_str()
+                .ok_or("Problem converting shell profile to string")?
         );
-        exit_with(Ok(&msg));
+        println!("{}", msg);
+        return Ok(()); // completions already installed
     }
 
-    file.write_all(script.as_bytes())
-        .unwrap_or_else(|e| exit_with(Err(e.into())));
+    file.write_all(script.as_bytes())?;
 
     let msg = format!(
         "Completions installed for {} in {:?}",
         shell,
         shell_profile
             .to_str()
-            .unwrap_or_else(|| exit_with(Err("Problem converting shell profile to string".into())))
+            .ok_or("Problem converting shell profile to string")?
     );
-    exit_with(Ok(&msg));
+    println!("{}", msg);
+    Ok(())
 }
 
-pub fn exit_with(result: Result<&str, DynErr>) -> ! {
-    match result {
-        Ok(msg) => {
-            if !msg.is_empty() {
-                println!("{}", msg);
-            }
-            process::exit(0);
-        }
-        Err(msg) => {
-            if !msg.to_string().is_empty() {
-                println!("{}", msg);
-            }
-            process::exit(1);
-        }
-    }
-}
-
-pub fn show_new_project_interface() {
+pub fn show_new_project_interface() -> Result<(), DynErr> {
     let name = Input::<String>::new()
         .with_prompt("Project name")
         .interact_text()
@@ -610,13 +604,12 @@ pub fn show_new_project_interface() {
     let default_path_string = project_folder
         .join(name_normalized)
         .to_str()
-        .unwrap_or_default()
+        .ok_or("Problem converting default path to string")?
         .to_string();
     let path = Input::<String>::new()
         .with_prompt("Project path")
         .default(default_path_string)
-        .interact_text()
-        .unwrap_or_default();
+        .interact_text()?;
 
     if path.trim().is_empty() {
         println!("Path cannot be empty");
@@ -628,15 +621,15 @@ pub fn show_new_project_interface() {
         return show_new_project_interface();
     }
 
-    new_project(name.trim(), path.trim());
+    new_project(name.trim(), path.trim())
 }
 
-pub fn new_project(name: &str, path: &str) {
+pub fn new_project(name: &str, path: &str) -> Result<(), DynErr> {
     if name.is_empty() {
         println!("Name cannot be empty");
         return show_new_project_interface();
     }
-    let mut projects = load_projects();
+    let mut projects = load_projects()?;
     let name_normalized = name
         .replace(' ', "-")
         .chars()
@@ -647,7 +640,7 @@ pub fn new_project(name: &str, path: &str) {
     let default_path_string = project_folder
         .join(name_normalized)
         .to_str()
-        .unwrap_or_default()
+        .ok_or("Problem converting default path to string")?
         .to_string();
     let path_string = if path.is_empty() {
         default_path_string
@@ -656,49 +649,58 @@ pub fn new_project(name: &str, path: &str) {
     };
     let path = PathBuf::from(path_string.clone())
         .canonicalize()
-        .unwrap_or_else(|_| create_path_with_parent_dirs(&path_string));
+        .unwrap_or_else(|_| create_path_with_parent_dirs(&path_string).unwrap_or_default());
     if path.exists() {
         println!("A project with that path already exists");
         println!("Path: {:?}", path);
         return show_new_project_interface();
     }
-    fs::create_dir(&path).unwrap_or_else(|e| exit_with(Err(e.into())));
+    fs::create_dir(&path)?;
     let mut project = Project {
         name: name.to_string(),
-        path: path.to_str().unwrap_or_default().to_string(),
+        path: path
+            .to_str()
+            .ok_or("Problem converting path to string")?
+            .to_string(),
         last_opened: Duration::from_secs(0),
     };
-    project.set_last_opened();
+    project.set_last_opened()?;
     if project_already_exists(&project.name) {
         return show_overwrite_project_interface(&project);
     }
     projects.push(project.clone());
-    save_projects(&projects);
-    open_project(&project.name, OpenAction::OpenInTerminal, false);
+    save_projects(&projects)?;
+    open_project(&project.name, OpenAction::OpenInTerminal, false)?;
+
+    Ok(())
 }
 
-pub fn create_path_with_parent_dirs(path: &str) -> PathBuf {
+pub fn create_path_with_parent_dirs(path: &str) -> Result<PathBuf, DynErr> {
     let path = PathBuf::from(path);
     let parent = path.parent();
     if parent.is_none() {
-        return path;
+        return Ok(path);
     }
-    let parent = parent.unwrap_or_else(|| exit_with(Err("Problem getting parent dir".into())));
+    let parent = parent.ok_or("Problem getting parent dir")?;
     if !parent.exists() {
-        create_path_with_parent_dirs(parent.to_str().unwrap_or_default());
+        create_path_with_parent_dirs(
+            parent
+                .to_str()
+                .ok_or("Problem converting parent dir to string")?,
+        )?;
     }
-    path
+    Ok(path)
 }
 
-pub fn show_home_interface(prompt: &str) {
-    increment_visits();
-    let projects = load_projects();
+pub fn show_home_interface(prompt: &str) -> Result<(), DynErr> {
+    increment_visits()?;
+    let projects = load_projects()?;
     let mut project_names = Vec::new();
     for project in projects.iter() {
         project_names.push(project.name.as_str());
     }
 
-    let prompt = if get_visits() == 1 {
+    let prompt = if get_visits()? == 1 {
         format!("{}\n{}", WELCOME_SCREEN, "Press enter to continue")
     } else {
         prompt.to_string()
@@ -722,7 +724,7 @@ pub fn show_home_interface(prompt: &str) {
         return quit();
     }
 
-    let selection = selection.unwrap_or_default();
+    let selection = selection.ok_or("Problem getting selection")?;
 
     match selection {
         0 => show_select_projects_interface(Action::Open, Some("Select a project to open")),
@@ -734,7 +736,7 @@ pub fn show_home_interface(prompt: &str) {
     }
 }
 
-pub fn select_no_projects_found() {
+pub fn select_no_projects_found() -> Result<(), DynErr> {
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("No projects found")
         .items(&["Add project", "Quit"])
@@ -762,11 +764,11 @@ impl IntoString for OsString {
     }
 }
 
-pub fn show_add_project_interface() {
-    let current_dir = env::current_dir().unwrap_or_else(|e| exit_with(Err(e.into())));
+pub fn show_add_project_interface() -> Result<(), DynErr> {
+    let current_dir = env::current_dir()?;
     let default_name = current_dir
         .file_name()
-        .unwrap_or_else(|| exit_with(Err("Problem getting current dir".into())))
+        .unwrap_or_default()
         .to_str()
         .unwrap_or_default()
         .to_string();
@@ -774,18 +776,17 @@ pub fn show_add_project_interface() {
     let name = Input::<String>::new()
         .with_prompt("Project name")
         .default(default_name)
-        .interact_text()
-        .unwrap_or_default();
+        .interact_text()?;
     let path = Input::<String>::new()
         .with_prompt("Project path")
         .default(default_path)
-        .interact_text()
-        .unwrap_or_default();
+        .interact_text()?;
     if name.is_empty() || path.is_empty() {
         println!("Name and path cannot be empty");
         return show_add_project_interface();
     }
-    add_project(name.as_str(), path.as_str());
+
+    add_project(name.as_str(), path.as_str())
 }
 
 pub enum Dialogue<'a> {
@@ -803,10 +804,9 @@ pub struct Project {
 }
 
 impl Project {
-    fn set_last_opened(&mut self) {
-        self.last_opened = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap_or_else(|e| exit_with(Err(e.into())));
+    fn set_last_opened(&mut self) -> Result<(), DynErr> {
+        self.last_opened = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
+        Ok(())
     }
 }
 
@@ -816,74 +816,76 @@ impl fmt::Display for Project {
     }
 }
 
-pub fn load_projects_from_disk() -> Vec<Project> {
-    let mut file = open_projects_file(true, false, false);
+pub fn load_projects_from_disk() -> Result<Vec<Project>, DynErr> {
+    let mut file = open_projects_file(true, false, false)?;
     let mut json = String::new();
-    file.read_to_string(&mut json).unwrap_or_default();
+    file.read_to_string(&mut json)?;
     let projects_set: HashSet<Project> = serde_json::from_str(&json).unwrap_or_default();
     let mut projects: Vec<Project> = projects_set.into_iter().collect();
     // sort by last opened (most recent first)
     projects.sort_by(|a, b| b.last_opened.cmp(&a.last_opened));
-    projects
+    Ok(projects)
 }
 
-pub fn load_projects() -> Vec<Project> {
-    let projects = PROJECTS.lock().unwrap_or_else(|e| exit_with(Err(e.into())));
-    projects.to_vec()
+pub fn load_projects() -> Result<Vec<Project>, DynErr> {
+    let projects = PROJECTS.lock()?;
+    Ok(projects.to_vec())
 }
 
-pub fn save_projects(projects: &[Project]) {
-    let mut file = File::create(get_config_dir().join("projects.json")).unwrap_or_else(|e| {
-        exit_with(Err(e.into()));
-    });
-    let json = serde_json::to_string_pretty(&projects).unwrap_or_else(|e| exit_with(Err(e.into())));
-    file.write_all(json.as_bytes())
-        .unwrap_or_else(|e| exit_with(Err(e.into())));
-    *PROJECTS.lock().unwrap_or_else(|e| exit_with(Err(e.into()))) = projects.to_vec();
+pub fn save_projects(projects: &[Project]) -> Result<(), DynErr> {
+    let mut file = File::create(get_config_dir()?.join("projects.json"))?;
+    let json = serde_json::to_string_pretty(&projects)?;
+    file.write_all(json.as_bytes())?;
+    *PROJECTS.lock()? = projects.to_vec();
 
     // also save a list of project names to a file for use in bash completion
-    let mut file = File::create(get_config_dir().join("project_names.txt")).unwrap_or_else(|e| {
-        exit_with(Err(e.into()));
-    });
+    let mut file = File::create(get_config_dir()?.join("project_names.txt"))?;
     let mut names = Vec::new();
     for project in projects {
         names.push(project.name.as_str());
     }
     let names = names.join("\n");
-    file.write_all(names.as_bytes())
-        .unwrap_or_else(|e| exit_with(Err(e.into())));
+    file.write_all(names.as_bytes())?;
+
+    Ok(())
 }
 
-pub fn add_project(name: &str, path: &str) {
-    let mut projects = load_projects();
-    let default_path = env::current_dir().unwrap_or_else(|e| exit_with(Err(e.into())));
+pub fn add_project(name: &str, path: &str) -> Result<(), DynErr> {
+    let mut projects = load_projects()?;
+    let default_path = env::current_dir()?;
     let default_name = default_path
         .file_name()
-        .unwrap_or_default()
+        .ok_or("Problem getting default name")?
         .to_str()
-        .unwrap_or_default();
+        .ok_or("Problem converting default name to string")?;
     let name = if name.is_empty() { default_name } else { name };
     let path = if path.is_empty() {
-        PathBuf::from(default_path.to_str().unwrap_or_default())
+        let default_path_str = default_path
+            .to_str()
+            .ok_or("Problem converting default path to string")?;
+        PathBuf::from(default_path_str)
     } else {
-        PathBuf::from(path).canonicalize().unwrap_or_else(|e| {
-            exit_with(Err(e.into()));
-        })
+        PathBuf::from(path).canonicalize()?
     };
     let mut project = Project {
         name: name.to_string(),
-        path: path.to_str().unwrap_or_default().to_string(),
+        path: path
+            .to_str()
+            .ok_or("Problem converting path to string")?
+            .to_string(),
         last_opened: Duration::from_secs(0),
     };
-    project.set_last_opened();
+    project.set_last_opened()?;
     if project_already_exists(&project.name) {
         return show_overwrite_project_interface(&project);
     }
     projects.push(project.clone());
-    save_projects(&projects);
+    save_projects(&projects)?;
+
+    Ok(())
 }
 
-pub fn show_overwrite_project_interface(project: &Project) {
+pub fn show_overwrite_project_interface(project: &Project) -> Result<(), DynErr> {
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt(format!(
             "Project {} already exists. Overwrite?",
@@ -899,16 +901,15 @@ pub fn show_overwrite_project_interface(project: &Project) {
             let selection = Confirm::with_theme(&ColorfulTheme::default())
                 .with_prompt(format!("Overwrite project {}", project.name))
                 .default(false)
-                .interact()
-                .unwrap_or_else(|e| exit_with(Err(e.into())));
+                .interact()?;
             if selection {
                 // overwrite
-                let mut projects = load_projects();
+                let mut projects = load_projects()?;
                 projects.retain(|p| p != project);
                 projects.push(project.clone());
-                save_projects(&projects);
+                save_projects(&projects)?;
             }
-            show_home_interface("What would you like to do?");
+            show_home_interface("What would you like to do?")
         }
         1 => show_add_project_interface(),
         2 => show_home_interface("What would you like to do?"),
@@ -917,14 +918,14 @@ pub fn show_overwrite_project_interface(project: &Project) {
 }
 
 pub fn project_already_exists(name_or_path: &str) -> bool {
-    let projects = load_projects();
+    let projects = load_projects().unwrap_or_default();
     projects
         .iter()
         .any(|p| p.name == name_or_path || p.path == name_or_path)
 }
 
-pub fn show_select_projects_interface(action: Action, prompt: Option<&str>) {
-    let projects = load_projects();
+pub fn show_select_projects_interface(action: Action, prompt: Option<&str>) -> Result<(), DynErr> {
+    let projects = load_projects()?;
 
     if projects.is_empty() {
         return select_no_projects_found();
@@ -955,15 +956,13 @@ pub fn show_select_projects_interface(action: Action, prompt: Option<&str>) {
     let selections = match dialogue {
         Dialogue::Select(select) => select
             .default(0)
-            .interact_opt()
-            .unwrap_or_default()
+            .interact_opt()?
             .map(|selection| vec![selection]),
-        Dialogue::MultiSelect(multi_select) => multi_select.interact_opt().unwrap_or_default(),
+        Dialogue::MultiSelect(multi_select) => multi_select.interact_opt()?,
     };
 
     if selections.is_none() || selections.as_ref().unwrap_or(&vec![]).is_empty() {
-        show_home_interface("What would you like to do?");
-        return;
+        return show_home_interface("What would you like to do?");
     }
 
     let selections = selections.unwrap_or_default();
@@ -995,15 +994,15 @@ pub fn show_select_projects_interface(action: Action, prompt: Option<&str>) {
             match selection {
                 0 => {
                     let project = &selected_projects[0];
-                    open_project(&project.name, OpenAction::OpenInTerminal, false);
+                    open_project(&project.name, OpenAction::OpenInTerminal, false)?;
                 }
                 1 => {
                     for project in selected_projects {
-                        open_project(&project.name, OpenAction::OpenInEditor, false);
+                        open_project(&project.name, OpenAction::OpenInEditor, false)?;
                     }
                 }
                 2 => {
-                    show_select_projects_interface(Action::Open, None);
+                    show_select_projects_interface(Action::Open, None)?;
                 }
                 3 => quit(),
                 _ => {}
@@ -1013,65 +1012,68 @@ pub fn show_select_projects_interface(action: Action, prompt: Option<&str>) {
             let also_delete_dir = Confirm::with_theme(&ColorfulTheme::default())
                 .with_prompt("Also delete project directory?")
                 .default(false)
-                .interact()
-                .unwrap_or_else(|e| exit_with(Err(e.into())));
+                .interact()?;
             delete_projects(
                 &selected_projects
                     .iter()
                     .map(|project| project.name.as_str())
                     .collect::<Vec<_>>(),
                 also_delete_dir,
-            );
+            )?;
         }
         Action::Edit => {
             for project in selected_projects {
-                edit_project(&project.name);
+                edit_project(&project.name)?;
             }
         }
     }
+
+    Ok(())
 }
 
-pub fn delete_project(name: &str) {
-    let mut projects = load_projects();
+pub fn delete_project(name: &str) -> Result<(), DynErr> {
+    let mut projects = load_projects()?;
     projects.retain(|project| project.name != name);
-    save_projects(&projects);
+    save_projects(&projects)?;
+
+    Ok(())
 }
 
-pub fn delete_projects(names: &[&str], also_delete_dir: bool) {
-    let mut projects = load_projects();
+pub fn delete_projects(names: &[&str], also_delete_dir: bool) -> Result<(), DynErr> {
+    let mut projects = load_projects()?;
     if also_delete_dir {
         for name in names {
             let project = projects
                 .iter()
                 .find(|project| project.name == *name)
-                .unwrap_or_else(|| exit_with(Err("Project not found".into())));
-            fs::remove_dir_all(&project.path).unwrap_or_else(|_| {
-                println!("Failed to delete project directory: {}", project.path)
-            });
+                .ok_or("Project not found")?;
+            fs::remove_dir_all(&project.path)?;
         }
     }
     projects.retain(|project| !names.contains(&project.name.as_str()));
-    save_projects(&projects);
+    save_projects(&projects)?;
+
+    Ok(())
 }
 
 /// Shows an interface for editing a project and saves the changes.
-pub fn edit_project(name: &str) {
-    let mut projects = load_projects();
+pub fn edit_project(name: &str) -> Result<(), DynErr> {
+    let mut projects = load_projects()?;
     if let Some(project) = projects.iter_mut().find(|project| project.name == name) {
         let new_name = Input::<String>::new()
             .with_prompt("Project name")
             .default(project.name.clone())
-            .interact_text()
-            .unwrap_or_default();
+            .interact_text()?;
         let new_path = Input::<String>::new()
             .with_prompt("Project path")
             .default(project.path.clone())
-            .interact_text()
-            .unwrap_or_default();
+            .interact_text()?;
         project.name = new_name;
         project.path = new_path;
-        save_projects(&projects);
+        save_projects(&projects)?;
     }
+
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1082,28 +1084,26 @@ pub enum OpenAction {
     OpenInEditor,
 }
 
-pub fn open_project(name: &str, open_action: OpenAction, replace_editor: bool) {
-    let mut projects = load_projects();
+pub fn open_project(
+    name: &str,
+    open_action: OpenAction,
+    replace_editor: bool,
+) -> Result<(), DynErr> {
+    let mut projects = load_projects()?;
     if let Some((i, project)) = projects
         .clone()
         .iter_mut()
         .enumerate()
         .find(|(_, project)| project.name == name)
     {
-        projects[i].set_last_opened();
-        save_projects(&projects);
+        projects[i].set_last_opened()?;
+        save_projects(&projects)?;
         match open_action {
-            OpenAction::OpenInTerminal => {
-                change_directory(&project.path).unwrap_or_else(|e| exit_with(Err(e.into())));
-            }
-            OpenAction::OpenInEditor => {
-                open_in_editor(&project.path, replace_editor).unwrap_or_else(|e| {
-                    exit_with(Err(e.into()));
-                });
-            }
+            OpenAction::OpenInTerminal => Ok(change_directory(&project.path)?),
+            OpenAction::OpenInEditor => Ok(open_in_editor(&project.path, replace_editor)?),
         }
     } else {
-        println!("Project not found");
+        Err(format!("Project {} not found", name).into())
     }
 }
 
@@ -1133,10 +1133,11 @@ pub fn open_in_editor(path: &str, replace_editor: bool) -> io::Result<()> {
     Ok(())
 }
 
-pub fn get_config_dir() -> PathBuf {
+pub fn get_config_dir() -> Result<PathBuf, DynErr> {
     // check if a .config folder exists in the home directory
-    let home_dir =
-        dirs::home_dir().unwrap_or_else(|| exit_with(Err("Problem getting home dir".into())));
+    let home_dir = dirs::home_dir()
+        .ok_or("Problem getting home directory")?
+        .canonicalize()?;
     let xdg_config_dir = home_dir.join(".config");
     let base_dir = if xdg_config_dir.exists() {
         xdg_config_dir
@@ -1146,23 +1147,24 @@ pub fn get_config_dir() -> PathBuf {
     };
     let config_dir = base_dir.join(APP_NAME);
     if !config_dir.exists() {
-        fs::create_dir(&config_dir).unwrap_or_else(|e| exit_with(Err(e.into())));
+        fs::create_dir(&config_dir)?;
     }
 
-    config_dir
+    Ok(config_dir)
 }
 
-pub fn open_projects_file(read: bool, write: bool, create: bool) -> File {
-    let config_dir = get_config_dir();
+pub fn open_projects_file(read: bool, write: bool, create: bool) -> Result<File, DynErr> {
+    let config_dir = get_config_dir()?;
     let projects_file = config_dir.join("projects.json");
     // if the file doesn't exist, create it
     if !projects_file.exists() {
-        File::create(&projects_file).unwrap_or_else(|e| exit_with(Err(e.into())));
+        File::create(&projects_file)?;
     }
-    fs::OpenOptions::new()
+    let open_file = fs::OpenOptions::new()
         .read(read)
         .write(write)
         .create(create)
-        .open(projects_file)
-        .unwrap_or_else(|e| exit_with(Err(e.into())))
+        .open(projects_file);
+
+    open_file.map_err(|err| err.into())
 }
