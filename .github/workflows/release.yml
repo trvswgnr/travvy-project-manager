@@ -42,26 +42,6 @@ jobs:
         toolchain: ${{ matrix.rust }}
         override: true
 
-    - name: Bump version in Cargo.toml, and commit
-      run: |
-        # if the version is not set, use the latest tag
-        VERSION="${{ env.VERSION }}"
-        if [[ -z "$VERSION" ]]; then
-          VERSION="$(git describe --tags --abbrev=0)"
-        fi
-        # remove the leading 'v' from the tag
-        VERSION="$VERSION" | sed 's/^v//'
-        #check if the version in Cargo.toml is the same as the tag and if so, exit early
-        if [[ "$(grep -E '^version = .*$' Cargo.toml | sed 's/^version = //'s)" == "$VERSION" ]]; then
-          echo "Version in Cargo.toml is already $VERSION"
-          exit 0
-        fi
-        sed -i "s/^version = .*/version = \"$VERSION\"/" Cargo.toml
-        git config --local user.email "
-        git config --local user.name "GitHub Action"
-        git commit -am "Bump version to ${{ env.VERSION }}"
-        git push
-
     - name: Build
       run: cargo build --release
 
