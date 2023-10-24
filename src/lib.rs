@@ -225,14 +225,14 @@ where
     app
 }
 
-pub fn handler(matches: &ArgMatches) -> Result<(), DynErr> {
+pub fn handler(matches: &ArgMatches) -> Result<String, DynErr> {
     if matches.args_present() && matches.contains_id("completions") {
         let confirmed = Confirm::with_theme(&ColorfulTheme::default())
             .with_prompt("Install completions?")
             .default(true)
             .interact()?;
         if !confirmed {
-            return Ok(());
+            return Ok("Canceled".into());
         }
         let shell = matches
             .value_of("completions")
@@ -249,36 +249,36 @@ pub fn handler(matches: &ArgMatches) -> Result<(), DynErr> {
                 .value_of("path")
                 .unwrap_or(add_matches.value_of("project_path").unwrap_or(""));
             if name.is_empty() && path.is_empty() {
-                return show_add_project_interface();
+                show_add_project_interface()?;
+            } else {
+                add_project(name, path)?;
             }
-            add_project(name, path)?;
         }
         ("list", _) => {
             let projects = get_projects()?;
             if projects.is_empty() {
-                return select_no_projects_found();
+                select_no_projects_found()?;
+            } else {
+                // term height without using crates
+                let term_height = console::Term::stdout().size().0;
+                Select::with_theme(&ColorfulTheme::default())
+                    .with_prompt("Your projects")
+                    .items(&projects)
+                    .default(0)
+                    .max_length(term_height as usize - 1)
+                    .interact_opt()
+                    .unwrap_or(None);
             }
-            // term height without using crates
-            let term_height = console::Term::stdout().size().0;
-            Select::with_theme(&ColorfulTheme::default())
-                .with_prompt("Your projects")
-                .items(&projects)
-                .default(0)
-                .max_length(term_height as usize - 1)
-                .interact_opt()
-                .unwrap_or(None);
         }
         ("delete", delete_matches) => {
             let name = delete_matches
                 .value_of("name")
                 .unwrap_or(delete_matches.value_of("project_name").unwrap_or(""));
             if name.is_empty() {
-                return show_select_projects_interface(
-                    Action::Delete,
-                    Some("Select projects to delete"),
-                );
+                show_select_projects_interface(Action::Delete, Some("Select projects to delete"))?;
+            } else {
+                delete_project(name)?;
             }
-            delete_project(name)?;
         }
         ("edit", edit_matches) => {
             let name = edit_matches
@@ -286,49 +286,45 @@ pub fn handler(matches: &ArgMatches) -> Result<(), DynErr> {
                 .unwrap_or(edit_matches.value_of("project_name").unwrap_or(""));
 
             if name.is_empty() {
-                return show_select_projects_interface(
-                    Action::Edit,
-                    Some("Select a project to edit"),
-                );
+                show_select_projects_interface(Action::Edit, Some("Select a project to edit"))?;
+            } else {
+                edit_project(name)?;
             }
-            edit_project(name)?;
         }
         ("open", open_matches) => {
             let name = open_matches
                 .value_of("name")
                 .unwrap_or(open_matches.value_of("project_name").unwrap_or(""));
             if name.is_empty() {
-                return show_select_projects_interface(
-                    Action::Open,
-                    Some("Select a project to open"),
-                );
-            }
-
-            let open_action = if open_matches.is_present("editor") {
-                OpenAction::OpenInEditor
+                show_select_projects_interface(Action::Open, Some("Select a project to open"))?;
             } else {
-                OpenAction::OpenInTerminal
-            };
+                let open_action = if open_matches.is_present("editor") {
+                    OpenAction::OpenInEditor
+                } else {
+                    OpenAction::OpenInTerminal
+                };
 
-            let replace_editor = open_matches.is_present("replace");
+                let replace_editor = open_matches.is_present("replace");
 
-            open_project(name, open_action, replace_editor)?;
+                open_project(name, open_action, replace_editor)?;
+            }
         }
         ("new", new_matches) => {
             let name = new_matches
                 .value_of("name")
                 .unwrap_or(new_matches.value_of("project_name").unwrap_or(""));
             if name.is_empty() {
-                return show_new_project_interface();
+                show_new_project_interface()?;
+            } else {
+                new_project(name, "")?;
             }
-            new_project(name, "")?;
         }
         _ => {
             show_home_interface("What would you like to do?")?;
         }
     };
 
-    Ok(())
+    Ok("Goodbye!".into())
 }
 
 /// Increments the number of visits to the home interface by one.
@@ -764,9 +760,9 @@ pub fn show_add_project_interface() -> Result<(), DynErr> {
     let current_dir = env::current_dir()?;
     let default_name = current_dir
         .file_name()
-        .unwrap_or_default()
+        .ok_or("Problem getting file name")?
         .to_str()
-        .unwrap_or_default()
+        .ok_or("Problem converting file name to string")?
         .to_string();
     let default_path = current_dir.to_str().unwrap_or_default().to_string();
     let name = Input::<String>::new()
@@ -781,8 +777,9 @@ pub fn show_add_project_interface() -> Result<(), DynErr> {
         println!("Name and path cannot be empty");
         return show_add_project_interface();
     }
+    add_project(name.as_str(), path.as_str())?;
 
-    add_project(name.as_str(), path.as_str())
+    Ok(())
 }
 
 pub enum Dialogue<'a> {
