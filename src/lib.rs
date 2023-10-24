@@ -430,30 +430,7 @@ pub fn get_path_to_shell_profile(shell: &str) -> Result<PathBuf, DynErr> {
 }
 
 pub fn gen_completions(shell: &str) -> Result<String, DynErr> {
-    let script = r#"
-__tpm() {
-    local cur
-    local prev
-    cur="${COMP_WORDS[COMP_CWORD]}"
-    prev="${COMP_WORDS[COMP_CWORD-1]}"
-    case ${COMP_CWORD} in
-    1)
-        COMPREPLY=($(compgen -W "open add edit delete new" -- ${cur}))
-        ;;
-    2)
-        case ${prev} in
-        open | edit | delete)
-            COMPREPLY=($(compgen -W "$(cat {%config_dir%}/project_names.txt)" -- ${cur}))
-            ;;
-        *)
-            ;;
-        esac
-        ;;
-    esac
-}
-
-complete -F __tpm {%app_name%}
-"#;
+    let script = include_str!("completions.sh");
 
     let config_dir = get_config_dir()?.canonicalize()?;
     let config_dir_str = config_dir
