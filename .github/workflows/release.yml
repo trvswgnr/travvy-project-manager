@@ -50,7 +50,7 @@ jobs:
           VERSION="$(git describe --tags --abbrev=0)"
         fi
         # remove the leading 'v' from the tag
-        VERSION="$VERSION" | sed 's/^v//'s
+        VERSION="$VERSION" | sed 's/^v//'
         #check if the version in Cargo.toml is the same as the tag and if so, exit early
         if [[ "$(grep -E '^version = .*$' Cargo.toml | sed 's/^version = //'s)" == "$VERSION" ]]; then
           echo "Version in Cargo.toml is already $VERSION"
