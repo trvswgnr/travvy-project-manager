@@ -30,3 +30,6 @@ codegen-units = 1
 panic = "abort"
 incremental = false
 strip = true
+
+[package.metadata.binstall]
+bin-dir = "{ bin }-{ target }{ binary-ext }"
