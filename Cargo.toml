@@ -33,3 +33,4 @@ strip = true
 
 [package.metadata.binstall]
 bin-dir = "{ bin }-{ target }{ binary-ext }"
+pkg-url = "{ repo }/releases/download/v{ version }/tpm-{ target }{ archive-suffix }"
