@@ -64,13 +64,12 @@
 //! [serde_json]: https://crates.io/crates/serde_json
 //! [dialoguer]: https://crates.io/crates/dialoguer
 //! [lazy_static]: https://crates.io/crates/lazy_static
-//!
 
 use clap::{App, Arg, ArgMatches, SubCommand, ValueHint};
 use dialoguer::{console, theme::ColorfulTheme, Confirm, Input, MultiSelect, Select};
-use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::{
+    cell::OnceCell,
     collections::HashSet,
     env,
     error::Error,
@@ -84,10 +83,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-lazy_static! {
-    /// A thread-safe lazily-evaluated static variable that holds a list of projects.
-    static ref PROJECTS: Mutex<Vec<Project>> = Mutex::new(load_projects_from_disk().unwrap_or_default());
-}
+pub static mut PROJECTS: OnceCell<Mutex<Vec<Project>>> = OnceCell::new();
 
 /// A shared resource that tracks the number of visits to the home interface.
 pub static mut HOME_INTERFACE_VISITS: Mutex<usize> = Mutex::new(0);
@@ -258,7 +254,7 @@ pub fn handler(matches: &ArgMatches) -> Result<(), DynErr> {
             add_project(name, path)?;
         }
         ("list", _) => {
-            let projects = load_projects()?;
+            let projects = get_projects()?;
             if projects.is_empty() {
                 return select_no_projects_found();
             }
@@ -629,7 +625,7 @@ pub fn new_project(name: &str, path: &str) -> Result<(), DynErr> {
         println!("Name cannot be empty");
         return show_new_project_interface();
     }
-    let mut projects = load_projects()?;
+    let mut projects = get_projects()?;
     let name_normalized = name
         .replace(' ', "-")
         .chars()
@@ -694,7 +690,7 @@ pub fn create_path_with_parent_dirs(path: &str) -> Result<PathBuf, DynErr> {
 
 pub fn show_home_interface(prompt: &str) -> Result<(), DynErr> {
     increment_visits()?;
-    let projects = load_projects()?;
+    let projects = get_projects()?;
     let mut project_names = Vec::new();
     for project in projects.iter() {
         project_names.push(project.name.as_str());
@@ -827,16 +823,31 @@ pub fn load_projects_from_disk() -> Result<Vec<Project>, DynErr> {
     Ok(projects)
 }
 
-pub fn load_projects() -> Result<Vec<Project>, DynErr> {
-    let projects = PROJECTS.lock()?;
+pub fn get_projects() -> Result<Vec<Project>, DynErr> {
+    let projects = unsafe {
+        PROJECTS
+            .get_or_init(|| Mutex::new(load_projects_from_disk().unwrap_or_default()))
+            .lock()?
+    };
+
     Ok(projects.to_vec())
+}
+
+pub fn set_projects(projects: &[Project]) -> Result<(), DynErr> {
+    unsafe {
+        *PROJECTS
+            .get_or_init(|| Mutex::new(load_projects_from_disk().unwrap_or_default()))
+            .lock()? = projects.to_vec();
+    }
+
+    Ok(())
 }
 
 pub fn save_projects(projects: &[Project]) -> Result<(), DynErr> {
     let mut file = File::create(get_config_dir()?.join("projects.json"))?;
     let json = serde_json::to_string_pretty(&projects)?;
     file.write_all(json.as_bytes())?;
-    *PROJECTS.lock()? = projects.to_vec();
+    set_projects(projects)?;
 
     // also save a list of project names to a file for use in bash completion
     let mut file = File::create(get_config_dir()?.join("project_names.txt"))?;
@@ -851,7 +862,7 @@ pub fn save_projects(projects: &[Project]) -> Result<(), DynErr> {
 }
 
 pub fn add_project(name: &str, path: &str) -> Result<(), DynErr> {
-    let mut projects = load_projects()?;
+    let mut projects = get_projects()?;
     let default_path = env::current_dir()?;
     let default_name = default_path
         .file_name()
@@ -904,7 +915,7 @@ pub fn show_overwrite_project_interface(project: &Project) -> Result<(), DynErr>
                 .interact()?;
             if selection {
                 // overwrite
-                let mut projects = load_projects()?;
+                let mut projects = get_projects()?;
                 projects.retain(|p| p != project);
                 projects.push(project.clone());
                 save_projects(&projects)?;
@@ -918,14 +929,14 @@ pub fn show_overwrite_project_interface(project: &Project) -> Result<(), DynErr>
 }
 
 pub fn project_already_exists(name_or_path: &str) -> bool {
-    let projects = load_projects().unwrap_or_default();
+    let projects = get_projects().unwrap_or_default();
     projects
         .iter()
         .any(|p| p.name == name_or_path || p.path == name_or_path)
 }
 
 pub fn show_select_projects_interface(action: Action, prompt: Option<&str>) -> Result<(), DynErr> {
-    let projects = load_projects()?;
+    let projects = get_projects()?;
 
     if projects.is_empty() {
         return select_no_projects_found();
@@ -1032,7 +1043,7 @@ pub fn show_select_projects_interface(action: Action, prompt: Option<&str>) -> R
 }
 
 pub fn delete_project(name: &str) -> Result<(), DynErr> {
-    let mut projects = load_projects()?;
+    let mut projects = get_projects()?;
     projects.retain(|project| project.name != name);
     save_projects(&projects)?;
 
@@ -1040,7 +1051,7 @@ pub fn delete_project(name: &str) -> Result<(), DynErr> {
 }
 
 pub fn delete_projects(names: &[&str], also_delete_dir: bool) -> Result<(), DynErr> {
-    let mut projects = load_projects()?;
+    let mut projects = get_projects()?;
     if also_delete_dir {
         for name in names {
             let project = projects
@@ -1058,7 +1069,7 @@ pub fn delete_projects(names: &[&str], also_delete_dir: bool) -> Result<(), DynE
 
 /// Shows an interface for editing a project and saves the changes.
 pub fn edit_project(name: &str) -> Result<(), DynErr> {
-    let mut projects = load_projects()?;
+    let mut projects = get_projects()?;
     if let Some(project) = projects.iter_mut().find(|project| project.name == name) {
         let new_name = Input::<String>::new()
             .with_prompt("Project name")
@@ -1089,7 +1100,7 @@ pub fn open_project(
     open_action: OpenAction,
     replace_editor: bool,
 ) -> Result<(), DynErr> {
-    let mut projects = load_projects()?;
+    let mut projects = get_projects()?;
     if let Some((i, project)) = projects
         .clone()
         .iter_mut()
@@ -1135,9 +1146,7 @@ pub fn open_in_editor(path: &str, replace_editor: bool) -> io::Result<()> {
 
 pub fn get_config_dir() -> Result<PathBuf, DynErr> {
     // check if a .config folder exists in the home directory
-    let home_dir = dirs::home_dir()
-        .ok_or("Problem getting home directory")?
-        .canonicalize()?;
+    let home_dir = PathBuf::from(env::var("HOME").unwrap_or("/".to_string())).canonicalize()?;
     let xdg_config_dir = home_dir.join(".config");
     let base_dir = if xdg_config_dir.exists() {
         xdg_config_dir
