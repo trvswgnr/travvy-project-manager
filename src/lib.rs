@@ -225,22 +225,46 @@ where
     app
 }
 
-pub fn handler(matches: &ArgMatches) -> Result<String, DynErr> {
-    if matches.args_present() && matches.contains_id("completions") {
+/// The primary handler for the application. Takes an `ArgMatches` object and
+/// returns a `Result` containing a `String` or a `DynErr`.
+///
+/// If the `--completions` argument is present, prompts the user to install
+/// completions. Then matches the subcommand and executes the corresponding
+/// action. If no subcommand is provided, it shows the home interface.
+///
+/// # Examples
+///
+/// ```
+/// use tpm_lib::{get_matches, handler};
+///
+/// let args = vec!["tpm", "add", "foo", "bar"];
+/// let matches = get_matches(args);
+/// let result = handler(&matches);
+///
+/// assert_eq!(result.is_ok(), true);
+/// ```
+pub fn handler(arg_matches: &ArgMatches) -> Result<String, DynErr> {
+    if arg_matches.args_present() && arg_matches.contains_id("completions") {
         let confirmed = Confirm::with_theme(&ColorfulTheme::default())
             .with_prompt("Install completions?")
             .default(true)
             .interact()?;
+
         if !confirmed {
             return Ok("Canceled".into());
         }
-        let shell = matches
+
+        let shell = arg_matches
             .value_of("completions")
             .map_or_else(get_current_shell, |s| Ok(s.to_string()))?;
-        gen_completions(&shell)?;
+
+        return gen_completions(&shell);
     }
 
-    match matches.subcommand().unwrap_or(("", &ArgMatches::default())) {
+    match arg_matches
+        .subcommand()
+        .unwrap_or(("", &ArgMatches::default()))
+    {
         ("add", add_matches) => {
             let name = add_matches
                 .value_of("name")
@@ -462,11 +486,12 @@ pub enum Action {
 pub fn get_current_shell() -> Result<String, DynErr> {
     let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
     let shell = shell.split('/').last().unwrap_or("sh");
-    // check if shell is in VALID_SHELLS
+
     if VALID_SHELLS.contains(&shell) {
         println!("Detected shell: {shell}");
         return Ok(shell.to_string());
     }
+
     let msg = format!(
         "Invalid shell: {shell}. Valid shells: {valid_shells}",
         valid_shells = VALID_SHELLS.join(", ")
@@ -486,7 +511,7 @@ pub fn get_path_to_shell_profile(shell: &str) -> Result<PathBuf, DynErr> {
     Ok(path)
 }
 
-pub fn gen_completions(shell: &str) -> Result<(), DynErr> {
+pub fn gen_completions(shell: &str) -> Result<String, DynErr> {
     let script = r#"
 __tpm() {
     local cur
@@ -552,8 +577,7 @@ complete -F __tpm {%app_name%}
                 .to_str()
                 .ok_or("Problem converting shell profile to string")?
         );
-        println!("{}", msg);
-        return Ok(()); // completions already installed
+        return Ok(msg.to_string()); // completions already installed
     }
 
     file.write_all(script.as_bytes())?;
@@ -565,8 +589,8 @@ complete -F __tpm {%app_name%}
             .to_str()
             .ok_or("Problem converting shell profile to string")?
     );
-    println!("{}", msg);
-    Ok(())
+
+    Ok(msg.to_string())
 }
 
 pub fn show_new_project_interface() -> Result<(), DynErr> {
@@ -613,7 +637,9 @@ pub fn show_new_project_interface() -> Result<(), DynErr> {
         return show_new_project_interface();
     }
 
-    new_project(name.trim(), path.trim())
+    new_project(name.trim(), path.trim())?;
+
+    Ok(())
 }
 
 pub fn new_project(name: &str, path: &str) -> Result<(), DynErr> {
