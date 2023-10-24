@@ -611,12 +611,12 @@ pub fn show_new_project_interface() -> Result<(), DynErr> {
 
     let home_dir = PathBuf::from(env::var("HOME").unwrap_or("/".to_string()));
     let project_folder = home_dir.join("projects");
-    let name_normalized = name
+    let name_normalized: String = name
         .trim()
         .replace(' ', "-")
         .chars()
-        .filter(|c| c.is_alphanumeric())
-        .collect::<String>();
+        .filter(filter_valid_name)
+        .collect();
     let default_path_string = project_folder
         .join(name_normalized)
         .to_str()
@@ -648,11 +648,11 @@ pub fn new_project(name: &str, path: &str) -> Result<(), DynErr> {
         return show_new_project_interface();
     }
     let mut projects = get_projects()?;
-    let name_normalized = name
+    let name_normalized: String = name
         .replace(' ', "-")
         .chars()
-        .filter(|c| c.is_alphanumeric())
-        .collect::<String>();
+        .filter(filter_valid_name)
+        .collect();
     let home_dir = PathBuf::from(env::var("HOME").unwrap_or("/".to_string()));
     let project_folder = home_dir.join("projects");
     let default_path_string = project_folder
@@ -1199,4 +1199,8 @@ pub fn open_projects_file(read: bool, write: bool, create: bool) -> Result<File,
         .open(projects_file);
 
     open_file.map_err(|err| err.into())
+}
+
+fn filter_valid_name(c: &char) -> bool {
+    c.is_alphanumeric() || c == &'-' || c == &'_'
 }
