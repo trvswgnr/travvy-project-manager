@@ -12,8 +12,13 @@ in the terminal or your default editor.
 - Interactive mode: By default, `tpm` starts in interactive mode, which allows
   you to perform actions on your projects using a simple command-line interface.
 
-- Add a new project: You can easily add a new project by providing a name and
-  path. `tpm` will create a project entry and save it for future reference.
+- Add a project: You can easily add a project from an existing directory by
+  providing a name and path. `tpm` will create a project entry and save it for
+  future reference.
+
+- Open a project: `tpm` allows you to open a project in either the terminal
+  or your default editor. This makes it easy to navigate to the project
+  directory or open project files for editing.
 
 - List all projects: `tpm` allows you to view a list of all your projects.
   You can select a project to perform various actions on it.
@@ -24,9 +29,9 @@ in the terminal or your default editor.
 - Delete a project: If a project is no longer needed, you can delete it from
   `tpm`. You can select multiple projects to delete at once.
 
-- Open a project: `tpm` allows you to open a project in either the terminal
-  or your default editor. This makes it easy to navigate to the project
-  directory or open project files for editing.
+- Create a new project: `tpm` allows you to create a new project from scratch.
+  This will create a new project folder in the tpm config directory, which you
+  can then open like any other project.
 
 ## Installation
 
@@ -103,6 +108,8 @@ examples of how to use `tpm`:
   ```shell
   tpm new # will prompt for name and path
   ```
+  **Note:** This will create a new project folder in the tpm config directory.
+  if you want to create a new project from an existing directory, use `tpm add`.
 
 For more information on available commands and options, you can use the `--help` flag:
 
