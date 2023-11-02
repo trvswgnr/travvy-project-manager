@@ -3,7 +3,6 @@ name = "travvy-project-manager"
 version = "0.1.15"
 edition = "2021"
 description = "A simple project manager for the command line"
-license = "MIT"
 license-file = "LICENSE"
 readme = "README.md"
 categories = ["command-line-utilities"]
