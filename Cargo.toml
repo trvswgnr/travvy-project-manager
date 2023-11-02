@@ -1,6 +1,6 @@
 [package]
 name = "travvy-project-manager"
-version = "0.1.15"
+version = "0.1.16"
 edition = "2021"
 description = "A simple project manager for the command line"
 license-file = "LICENSE"
